@@ -1,4 +1,11 @@
+<<<<<<< HEAD
 TTGO : 3C:61:05:0B:BB:90 
 LILYGO : 08:3A:F2:69:CF:64
 
 
+=======
+TTGO : 3C:61:05:0B:BB:90 
+LILYGO : 08:3A:F2:69:CF:64
+
+
+>>>>>>> 9643d8be12865d5ff58ccfe8037091f491bf4d7a
