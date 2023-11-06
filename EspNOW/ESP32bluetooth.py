@@ -8,7 +8,7 @@ def find_esp32():
 
     for addr, name in nearby_devices:
         print("  {} - {}".format(addr, name))
-        if name == "ESP32_BT_Test":  # Ensure your ESP32's Bluetooth Name matches this
+        if name == "Der fuhrer":  # Ensure your ESP32's Bluetooth Name matches this
             return addr
 
     return None
