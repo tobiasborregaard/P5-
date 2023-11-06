@@ -1,6 +1,2 @@
-<<<<<<< HEAD
 Espnow dokumentationt :
-=======
-Espnow dokumentationt :
->>>>>>> 9643d8be12865d5ff58ccfe8037091f491bf4d7a
 https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/network/esp_now.html
