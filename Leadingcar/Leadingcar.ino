@@ -7,7 +7,7 @@
 
 //===========Angle relateret inputs og variabler=================
 
-#define ServoPin 27         // GPIO 4 on the ESP  //A1 pin på Arduino
+#define ServoPin 27  // GPIO 4 on the ESP  //A1 pin på Arduino
 float input_voltage = 0.0;
 
 
@@ -21,12 +21,16 @@ double delaytimer = 5;
 double speedTimeCal = 1000;
 double speedLastTime = 0;
 
+unsigned long previousMillis = 0;
+const long interval = 1000;  // Interval at which to run (milliseconds)
+
 double calSpeed = 0;
 int counter = 0;
 
 int analog_value;
 double Angle;
 
+float datapackage[2];
 
 // Initialize TFT display
 TFT_eSPI tft = TFT_eSPI();  // Corrected: added parentheses
@@ -35,24 +39,35 @@ BluetoothSerial SerialBT;
 #define Width 135
 #define Height 240
 
+#define CHANNEL 0
+//ttgo
+uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x3D, 0xE8 };
+// lilygo
+//uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
+
+esp_now_peer_info_t peerInfo;
+// skal ændres så vi kan sende vores egen pakke struktur
+struct message {
+  float Angle;
+  float Speed;
+} __attribute__((packed));  // Ensure no padding is added to the struct
+
+
+
 
 //hvis skærmen skal bruges til noget
-void tftsetup(){
-tft.init();
+void tftsetup() {
+  tft.init();
   tft.setRotation(0);
   tft.fillScreen(TFT_BLACK);
-  tft.setCursor((Width / 2)-38, Height / 2);
+  tft.setCursor(0, 80);
   tft.print(WiFi.macAddress());
-
-
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);  // Text color, background color
 }
 // kan sende data til en computer med bluetooth
-void bluetoothsetup(){
-    SerialBT.begin("Der fuhrer"); //Bluetooth for leading car
-    // Serial.
-
-
-
+void bluetoothsetup() {
+  SerialBT.begin("Der fuhrer");  //Bluetooth for leading car
+                                 // Serial.begin("Follower")
 }
 // esp now initialisering
 void InitESP() {
@@ -76,54 +91,64 @@ void InitESP() {
     Serial.println("Failed to add peer");
     return;
   }
-    esp_now_register_recv_cb(OnDataRecv);
-    esp_now_register_send_cb(OnDataSent);
+  esp_now_register_recv_cb(OnDataRecv);
+  esp_now_register_send_cb(OnDataSent);
 }
 
 void setup() {
-    Serial.begin(115200);
-    Serial.print("Engine starting..");
-    pinMode(ServoPin, INPUT);
-    pinMode(OpticPin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
-    tftsetup();
-    bluetoothsetup();
-    InitESP(); 
-
+  Serial.begin(115200);
+  Serial.print("Engine starting..");
+  pinMode(ServoPin, INPUT);
+  pinMode(OpticPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
+  tftsetup();
+  bluetoothsetup();
+  InitESP();
 }
+
+
+
 
 
 void loop() {
+  unsigned long currentMillis = millis();
 
-  //======= Sampling og konverting til spænding======
-  analog_value = analogRead(ServoPin);
-  //bool latest_value = digitalRead(35);
-  input_voltage = (analog_value * 4) / 4095.0;
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
 
-  if (input_voltage < 0.1)   //Filtrering af shit measurement
-  {
-    input_voltage = 0.0;
+    analog_value = analogRead(ServoPin);
+    input_voltage = (analog_value * 4) / 4095.0;
+
+    if (input_voltage < 0.1) {
+      input_voltage = 0.0;
+    }
+
+    AngleCalculator(input_voltage);
+    CarVelocity();
+
+    message msgToSend = {Angle, calSpeed};
+  
+
+    // Send data via Bluetooth
+    btpackagesender();
+
+    // Send data via ESP-NOW
+    sendData(&msgToSend);
   }
-  AngleCalculator(input_voltage);
-  int oldTime = millis();
-  delay(1000);  //Afgørende delay for at nå at beregne en hastighed! //Skal nok tweakes lidt
-  CarVelocity();
-  //Serial.println("Counter: " + counter);
-  //Serial.println("Latest value: " + latest_value);
 }
-
 //===========Angle funktion, tager servospænding som input og retunere vinkel på baggrund af funktion=================
 void AngleCalculator(float V) {
 
-  Angle = 39.8613 * V - 57.6003; // Relation mellem vinkel og spænding
+  Angle = 39.8613 * V - 57.6003;  // Relation mellem vinkel og spænding
 
-  Serial.print("ServoSpænding: ");
-  Serial.print(input_voltage);
-  Serial.println(" V");
+  // Display on TFT
 
-  Serial.print("Angle: ");
-  Serial.print(Angle);
-  Serial.println(" °");
+  tft.setCursor(0, 0);
+  
+  tft.printf("Angle: %.2f °\n", Angle);
+
+  // Send over Bluetooth
+  datapackage[0]= Angle;
 
 }
 
@@ -141,21 +166,23 @@ void Countup() {
 //===========Velocity Funktion=================
 
 void CarVelocity() {
-  if (millis() - speedLastTime >= speedTimeCal ) {
+  if (millis() - speedLastTime >= speedTimeCal) {
     //Beregning i m/s
-    calSpeed = ((counter * 3.656) / 100) / (speedTimeCal / 1000); //SpeedTimeCal er divideret med 1000 for omregning til sekunder.
+    calSpeed = ((counter * 3.656) / 100) / (speedTimeCal / 1000);  //SpeedTimeCal er divideret med 1000 for omregning til sekunder.
     speedLastTime = millis();
-    Serial.print("Speed is currently: ");
-    Serial.print(calSpeed);
-    Serial.println(" m/s");
 
-    calSpeed *= 3.6;    // Konvertering til km/t
-    Serial.print("Speed in km/h: ");
-    Serial.print(calSpeed);
-    Serial.println(" km/h");
+    calSpeed *= 3.6;  // Konvertering til km/t
+
 
     counter = 0;
+
   }
+    // Display on TFT
+    tft.setCursor(0, 40);
+    tft.printf("Speed: %.2f km/h\n", calSpeed);
+    datapackage[1] = calSpeed;
+
+    
 }
 
 
@@ -166,17 +193,17 @@ void OnDataRecv(const uint8_t* mac_addr, const uint8_t* incomingData, int data_l
     Serial.print("Received data from: ");
     for (int i = 0; i < 6; ++i) {
       if (mac_addr[i] < 16) {
-        Serial.print("0"); // Print a leading zero if necessary
+        Serial.print("0");  // Print a leading zero if necessary
       }
       Serial.print(mac_addr[i], HEX);
       if (i < 5) {
-        Serial.print(":"); // Print a colon after each byte except the last
+        Serial.print(":");  // Print a colon after each byte except the last
       }
     }
-    Serial.println(); // Print a newline after the MAC address
+    Serial.println();  // Print a newline after the MAC address
 
-    Serial.print("Message: ");
-    Serial.println(msg->text);
+    //Serial.print("Message: ");
+    //Serial.println(msg->text);
   } else {
     Serial.println("Received data size does not match expected message size.");
   }
@@ -201,4 +228,13 @@ void sendData(const message* dataToSend) {
   } else {
     Serial.println("Error sending data");
   }
+}
+
+
+void btpackagesender(){
+  // float datapackage[2] = {value1, value2};
+  String package = String(datapackage[0], 2) + " , " + String(datapackage[1], 2);
+  Serial.println(package);  // Debug print to Serial Monitor
+  SerialBT.println(package);  // Send the package over Bluetooth
+  delay(10);  // Small delay to avoid overloading the Bluetooth buffer
 }
