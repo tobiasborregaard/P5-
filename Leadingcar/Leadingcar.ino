@@ -30,7 +30,6 @@ int counter = 0;
 int analog_value;
 double Angle;
 
-float datapackage[2];
 
 // Initialize TFT display
 TFT_eSPI tft = TFT_eSPI();  // Corrected: added parentheses
@@ -125,8 +124,8 @@ void loop() {
 
     AngleCalculator(input_voltage);
     CarVelocity();
-
-    message msgToSend = {Angle, calSpeed};
+    // Create a message to send
+    message msgToSend = {Angle, Speed};
   
 
     // Send data via Bluetooth
@@ -233,7 +232,7 @@ void sendData(const message* dataToSend) {
 
 void btpackagesender(){
   // float datapackage[2] = {value1, value2};
-  String package = String(datapackage[0], 2) + " , " + String(datapackage[1], 2);
+  String package = String(Angle, 2) + " , " + String(calSpeed, 2);
   Serial.println(package);  // Debug print to Serial Monitor
   SerialBT.println(package);  // Send the package over Bluetooth
   delay(10);  // Small delay to avoid overloading the Bluetooth buffer
