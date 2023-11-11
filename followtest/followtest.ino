@@ -11,7 +11,7 @@ uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
 esp_now_peer_info_t peerInfo;
 // skal ændres så vi kan sende vores egen pakke struktur
 struct message {
-  float Angle;
+  double Angle;
   float Speed;
 } __attribute__((packed));  // Ensure no padding is added to the struct
 
