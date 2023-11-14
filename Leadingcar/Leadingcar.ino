@@ -1,6 +1,7 @@
 #include <BluetoothSerial.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_timer.h>
 #include <TFT_eSPI.h>
 #include "bitmp.h"
 
@@ -16,7 +17,7 @@ float input_voltage = 0.0;
 #define OpticPin 17
 
 double lasttime = 0;
-double delaytimer = 5;
+double delaytimer = 10;
 
 double speedTimeCal = 1000;
 double speedLastTime = 0;
@@ -52,8 +53,28 @@ struct message {
   float Speed;
 } __attribute__((packed));  // Ensure no padding is added to the struct
 
+// Define an ISR for the timer
+// Corrected ISR for the timer
+void IRAM_ATTR onTimer(void* arg) {
+    CarVelocity();
+}
 
+void timerinit() {
+    // Timer configuration
+    esp_timer_create_args_t timer_args = {}; // Zero-initialize the struct
+    timer_args.callback = &onTimer;
+    timer_args.name = "MyTimer";
 
+    esp_timer_handle_t my_timer_handle;
+    if (esp_timer_create(&timer_args, &my_timer_handle) != ESP_OK) {
+        // Handle error (e.g., print an error message)
+    }
+
+    // Start the timer with a 1-second period (1000000 microseconds)
+    if (esp_timer_start_periodic(my_timer_handle, 1000000) != ESP_OK) {
+        // Handle error (e.g., print an error message)
+    }
+}
 
 //hvis skærmen skal bruges til noget
 void tftsetup() {
@@ -67,8 +88,8 @@ void tftsetup() {
 }
 // kan sende data til en computer med bluetooth
 void bluetoothsetup() {
-  SerialBT.begin();  //Bluetooth for leading car
-                                 // Serial.begin("Follower")
+  SerialBT.begin(BTname);  //Bluetooth for leading car
+                           // Serial.begin("Follower")
 }
 // esp now initialisering
 void InitESP() {
@@ -97,12 +118,11 @@ void InitESP() {
 }
 
 
-void wireless(bool state){
-  if(state == true){
+void wireless(bool state) {
+  if (state == true) {
     bluetoothsetup();
     InitESP();
-  }
-  else{
+  } else {
     WiFi.mode(WIFI_OFF);
     esp_now_deinit();
     SerialBT.end();
@@ -115,48 +135,48 @@ void setup() {
   pinMode(OpticPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
   tftsetup();
-  bluetoothsetup();
-  InitESP();
-  tft.pushImage(0, Height-145, 135, 160, Emilio);
+  timerinit();
+  //bluetoothsetup();
+  //InitESP();
 }
 
 void loop() {
 
   //======= Sampling og konverting til spænding======
   AngleCalculator();
-  CarVelocity();
+ 
 
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    Serial.println(analog_value);
+    showemilio(true);
+    //Serial.println(analog_value);
     // Create a message to send
-    message msgToSend = { Angle, calSpeed };
-
-
+    //message msgToSend = { Angle, calSpeed };
+    String package = String(Angle, 2) + " , " + String(calSpeed, 2);
+    Serial.println(package);  // Debug print to Serial Monitor
     // Send data via Bluetooth
-    btpackagesender();
+    //btpackagesender();
 
     // Send data via ESP-NOW
-    sendData(&msgToSend);
+    //sendData(&msgToSend);
+    showemilio(false);
   }
 }
 
-void showemilio(bool state){
- if (state==true){
+void showemilio(bool state) {
+  if (state == true) {
 
-  tft.pushImage(0, Height, 100, 100, Emilio);
+    tft.pushImage(0, Height - 145, 135, 160, Emilio);
 
- }else{
-  tft.fillRect(0, Height, Width, 64, TFT_BLACK);
-
- }
-  
+  } else {
+    tft.fillRect(0, Height - 145, 135, 160, TFT_BLACK);
+  }
 }
 
 //===========Angle funktion, tager servospænding som input og retunere vinkel på baggrund af funktion=================
 void AngleCalculator() {
-  wireless(false);
+  //wireless(false);
   analog_value = analogRead(ServoPin);
   input_voltage = (analog_value * 4) / 4095.0;
 
@@ -168,11 +188,9 @@ void AngleCalculator() {
   Angle = 39.8613 * input_voltage - 57.6003;  // Relation mellem vinkel og spænding
 
   // Display on TFT
-
   tft.setCursor(0, 0);
-
   tft.printf("Angle: %.2f °\n", Angle);
-  wireless(true);
+  //wireless(true);
 }
 
 //===========Pulse counter funktion - Kaldes ud fra interrupt=================
@@ -238,7 +256,7 @@ void sendData(const message* dataToSend) {
 void btpackagesender() {
   // float datapackage[2] = {value1, value2};
   String package = String(Angle, 2) + " , " + String(calSpeed, 2);
-  // Serial.println(package);  // Debug print to Serial Monitor
+  Serial.println(package);  // Debug print to Serial Monitor
   SerialBT.println(package);  // Send the package over Bluetooth
   delay(10);                  // Small delay to avoid overloading the Bluetooth buffer
 }
