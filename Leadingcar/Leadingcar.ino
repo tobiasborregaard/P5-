@@ -54,7 +54,6 @@ struct message {
 } __attribute__((packed));  // Ensure no padding is added to the struct
 
 // Define an ISR for the timer
-// Corrected ISR for the timer
 void IRAM_ATTR onTimer(void* arg) {
     CarVelocity();
 }
