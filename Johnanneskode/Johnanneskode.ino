@@ -28,38 +28,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
 }
 
-void loop() {
-  
-    //======= Sampling og konverting til spænding======
-   
-    analog_value = analogRead(ServoPin);
-    input_voltage = (analog_value * 4) / 4095.0;
-    
 
-    if (input_voltage < 0.1) {
-      input_voltage = 0.0;
-    }
-
-    AngleCalculator(input_voltage);
- 
-    CarVelocity();
-    
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    Serial.println(analog_value);
-    // Create a message to send
-    message msgToSend = {Angle, calSpeed};
-  
-
-    // Send data via Bluetooth
-    btpackagesender();
-
-    // Send data via ESP-NOW
-    sendData(&msgToSend);
-  }
-
-}
 void loop() {
 
   //======= Sampling og konverting til spænding======

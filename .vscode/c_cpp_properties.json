@@ -251,7 +251,7 @@
                 "ARDUINO_ARCH_ESP32",
                 "ARDUINO_BOARD=\"TTGO_T1\"",
                 "ARDUINO_VARIANT=\"ttgo-t1\"",
-                "ARDUINO_PARTITION_ffat",
+                "ARDUINO_PARTITION_huge_app",
                 "ESP32",
                 "CORE_DEBUG_LEVEL=0",
                 "ARDUINO_USB_CDC_ON_BOOT=0",

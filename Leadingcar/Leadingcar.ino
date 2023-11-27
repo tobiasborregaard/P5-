@@ -119,12 +119,12 @@ void InitESP() {
 
 void wireless(bool state) {
   if (state == true) {
-    bluetoothsetup();
+    // bluetoothsetup();
     InitESP();
   } else {
     WiFi.mode(WIFI_OFF);
     esp_now_deinit();
-    SerialBT.end();
+    // SerialBT.end();
   }
 }
 void setup() {
@@ -133,10 +133,10 @@ void setup() {
   pinMode(ServoPin, INPUT);
   pinMode(OpticPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
-  tftsetup();
+  //tftsetup();
   timerinit();
   //bluetoothsetup();
-  //InitESP();
+  InitESP();
 }
 
 void loop() {
@@ -148,34 +148,34 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    showemilio(true);
+    // showemilio(true);
     //Serial.println(analog_value);
     // Create a message to send
-    //message msgToSend = { Angle, calSpeed };
+    message msgToSend = { Angle, calSpeed };
     String package = String(Angle, 2) + " , " + String(calSpeed, 2);
     Serial.println(package);  // Debug print to Serial Monitor
     // Send data via Bluetooth
     //btpackagesender();
 
     // Send data via ESP-NOW
-    //sendData(&msgToSend);
-    showemilio(false);
+    sendData(&msgToSend);
+    // showemilio(false);
   }
 }
 
-void showemilio(bool state) {
-  if (state == true) {
+// void showemilio(bool state) {
+//   if (state == true) {
 
-    tft.pushImage(0, Height - 145, 135, 160, Emilio);
+//     tft.pushImage(0, Height - 145, 135, 160, Emilio);
 
-  } else {
-    tft.fillRect(0, Height - 145, 135, 160, TFT_BLACK);
-  }
-}
+//   } else {
+//     tft.fillRect(0, Height - 145, 135, 160, TFT_BLACK);
+//   }
+// }
 
 //===========Angle funktion, tager servospænding som input og retunere vinkel på baggrund af funktion=================
 void AngleCalculator() {
-  //wireless(false);
+  wireless(false);
   analog_value = analogRead(ServoPin);
   input_voltage = (analog_value * 4) / 4095.0;
 
@@ -186,10 +186,10 @@ void AngleCalculator() {
 
   Angle = 39.8613 * input_voltage - 57.6003;  // Relation mellem vinkel og spænding
 
-  // Display on TFT
-  tft.setCursor(0, 0);
-  tft.printf("Angle: %.2f °\n", Angle);
-  //wireless(true);
+  // // Display on TFT
+  // tft.setCursor(0, 0);
+  // tft.printf("Angle: %.2f °\n", Angle);
+  wireless(true);
 }
 
 //===========Pulse counter funktion - Kaldes ud fra interrupt=================
@@ -214,8 +214,8 @@ void CarVelocity() {
 
     counter = 0;
     // Display on TFT
-    tft.setCursor(0, 40);
-    tft.printf("Speed: %.2f km/h\n", calSpeed);
+    // tft.setCursor(0, 40);
+    // tft.printf("Speed: %.2f km/h\n", calSpeed);
   }
 }
 
