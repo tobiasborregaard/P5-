@@ -34,7 +34,7 @@ struct Keymsg {
   int PublicKey;
   uint8_t checksum;
 } __attribute__((packed));
-// ESP32 MAC addresses for ttgo and lilygo
+
 
 struct HelloMsg {
   uint8_t ranhello;
