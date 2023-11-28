@@ -31,6 +31,11 @@ struct AckMsg {
   uint32_t checksum;
 };
 
+struct retmsg {
+  bool ret;
+};
+
+
 
 enum DeviceState {
   IDLE,
@@ -61,7 +66,7 @@ int PrivateKey = 0;
 int SharedSecret = 0;
 
 
-long KEY_EXCHANGE_TIMEOUT = 800;
+long KEY_EXCHANGE_TIMEOUT = 5000;
 
 
 
@@ -107,7 +112,7 @@ void loop() {
         myKeySent = false;
         Serial.println("IDLE");
         // Send "hello" message and transition to WAITING_FOR_ACK
-        delay(random(300, 500));  // Wait between 0,2 and 0,5 seconds
+        delay(random(300, 1000));  // Wait between 0,2 and 0,5 seconds
         HelloMsg msg;
         msg.ranhello = random(0, 255);
         msg.checksum = crc32((uint8_t *)&msg, sizeof(HelloMsg) - sizeof(msg.checksum));
@@ -141,16 +146,16 @@ void loop() {
           esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
           myKeySent = true;
         }
+        
+
         long timmil = millis();
-
-
-        while (millis() - timmil < KEY_EXCHANGE_TIMEOUT) {
+        while (millis() - timmil < 5000) {
           if (deviceState == KEY_EXCHANGE) {
             break;
           }
         }
         if (deviceState == KEY_EXCHANGE) {
-          
+
           Serial.println("Key exchange timed out.");
           deviceState = IDLE;
         }
@@ -160,18 +165,17 @@ void loop() {
       }
     case WAITING_KEY_EXCHANGE:
       {
-        if(isInitiator == false){
+        if (isInitiator == false) {
           Serial.println("WAITING_KEY_EXCHANGE");
           delay(20);
-          isInitiator = true; 
-          
-        
-      }
+          isInitiator = true;
+        }
+        delay(5000);
       }
     case CONNECTED:
       {
-        
-       
+
+
         break;
       }
   }
@@ -190,12 +194,12 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         if (hmsg->checksum == crc32(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
           delay(20);
           // Send back an "acknowledgement" message
-         
+
           AckMsg msg;
 
           msg.ranack = 31108;
           msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
-          
+
           esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
           delay(20);
           deviceState = WAITING_KEY_EXCHANGE;
@@ -208,7 +212,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     case WAITING_FOR_ACK:
       // Handle acknowledgement
       Serial.println("Received ack message");
-      
+
 
       if (len == sizeof(AckMsg)) {
 
@@ -226,64 +230,12 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
       break;
     case KEY_EXCHANGE:
-      // Handle key exchange
-      if (len == sizeof(Keymsg) ) {
-        Serial.println("Received public key.");
-        Keymsg *kmsg = (Keymsg *)incomingData;
-        if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-          SharedSecret = SecretKey(kmsg->PublicKey);
-
-          Serial.println("Verified key public key.");
-          if (myKeySent == false) {
-            kmsg->PublicKey = PublicKey();
-            kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
-            esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
-            Serial.println("Sent public key.");
-             // Send message
-              Serial.println("Works nicely");
-            deviceState = CONNECTED;
-            myKeySent = true;
-          } else {
-            // Send message
-              Serial.println("Works nicely");
-            deviceState = CONNECTED;
-          }
-
-        } else {
-
-          Serial.println("Checksum verification failed for received public key.");
-        }
-      } else
-      {
-        Serial.println("Wrong size for key message.");
-      }
-      
+      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState);
       break;
     case WAITING_KEY_EXCHANGE:
-      // Handle key exchange
-      
-      if (len == sizeof(Keymsg)) {
-          Serial.println("Received public key.");
-        Keymsg *kmsg = (Keymsg *)incomingData;
-        if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-          SharedSecret = SecretKey(kmsg->PublicKey);
-          Serial.println("Verified key waitn public key.");
-          if (myKeySent == false) {
-            kmsg->PublicKey = PublicKey();
-            kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
-            esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
-            myKeySent = true;
-            deviceState = CONNECTED;
-          } else {
-            deviceState = CONNECTED;
-          }
+      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState);
 
-        } else {
-          Serial.println("Checksum verification failed for received public key.");
-        }
-      } else {
-        Serial.println("Wrong size for key message.");
-      }
+      break;
       break;
     case CONNECTED:
       // Handle normal communication
@@ -302,10 +254,10 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  
+
   if (status != ESP_NOW_SEND_SUCCESS) {
     Serial.println("Failed to send data");
-  } 
+  }
 }
 
 
@@ -332,20 +284,20 @@ void addChecksumToMessage(message *msg) {
 
 
 uint32_t crc32(const void *data, size_t length) {
-    uint32_t crc = 0xFFFFFFFF;
-    const uint8_t *bytes = static_cast<const uint8_t*>(data);
+  uint32_t crc = 0xFFFFFFFF;
+  const uint8_t *bytes = static_cast<const uint8_t *>(data);
 
-    for (size_t i = 0; i < length; ++i) {
-        crc ^= (uint32_t)bytes[i];
-        for (uint8_t j = 0; j < 8; j++) {
-            if (crc & 1) {
-                crc = (crc >> 1) ^ 0xEDB88320;  // 0xEDB88320 is the reversed polynomial for CRC-32
-            } else {
-                crc >>= 1;
-            }
-        }
+  for (size_t i = 0; i < length; ++i) {
+    crc ^= (uint32_t)bytes[i];
+    for (uint8_t j = 0; j < 8; j++) {
+      if (crc & 1) {
+        crc = (crc >> 1) ^ 0xEDB88320;  // 0xEDB88320 is the reversed polynomial for CRC-32
+      } else {
+        crc >>= 1;
+      }
     }
-    return ~crc;  // Final negation
+  }
+  return ~crc;  // Final negation
 }
 
 
@@ -379,4 +331,32 @@ int PublicKey() {
 // secretkey generate function
 int SecretKey(int rPublicKey) {
   return modularExponentiation(rPublicKey, PrivateKey, Prime);
+}
+
+
+void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState &deviceState) {
+  if (len == sizeof(Keymsg)) {
+    Serial.println("Received public key.");
+    Keymsg *kmsg = (Keymsg *)incomingData;
+    if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
+      SharedSecret = SecretKey(kmsg->PublicKey);
+      Serial.println("Verified key public key.");
+      if (!myKeySent) {
+        kmsg->PublicKey = PublicKey();
+        kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
+        esp_now_send(peerAddress, (uint8_t *)kmsg, sizeof(Keymsg));
+        Serial.println("Sent public key.");
+        Serial.println("Key exchange complete.");
+        deviceState = CONNECTED;
+        myKeySent = true;
+      } else {
+        Serial.println("Key exchange complete.");
+        deviceState = CONNECTED;
+      }
+    } else {
+      Serial.println("Checksum verification failed for received public key.");
+    }
+  } else {
+    Serial.println("Wrong size for key message.");
+  }
 }
