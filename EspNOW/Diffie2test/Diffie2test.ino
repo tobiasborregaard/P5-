@@ -85,12 +85,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       SharedSecret = modularExponentiation(kmsg->PublicKey, PrivateKey, Prime);
       keyEstablished = true;
       syncKey();
-      if (ESP_NOW_SEND_SUCCESS == "Succes"){
-      Serial.println("Key exchange complete. Shared secret established.");
-
-      }else{
-        Serial.println("Sending failed")
-      }
+      
     } else {
       Serial.println("Checksum verification failed for received public key.");
     }
