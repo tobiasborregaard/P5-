@@ -104,6 +104,7 @@ void loop() {
   switch (deviceState) {
     case IDLE:
       {
+        myKeySent = false;
         Serial.println("IDLE");
         // Send "hello" message and transition to WAITING_FOR_ACK
         delay(random(300, 500));  // Wait between 0,2 and 0,5 seconds
@@ -149,6 +150,7 @@ void loop() {
           }
         }
         if (deviceState == KEY_EXCHANGE) {
+          
           Serial.println("Key exchange timed out.");
           deviceState = IDLE;
         }
@@ -158,10 +160,14 @@ void loop() {
       }
     case WAITING_KEY_EXCHANGE:
       {
-        Serial.println("WAITING_KEY_EXCHANGE");
-        delay(20);
+        if(isInitiator == false){
+          Serial.println("WAITING_KEY_EXCHANGE");
+          delay(20);
+          isInitiator = true; 
+          
+        
       }
-      
+      }
     case CONNECTED:
       {
         
@@ -191,13 +197,14 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
           msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
           
           esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
+          delay(20);
           deviceState = WAITING_KEY_EXCHANGE;
         } else {
           Serial.println("Checksum verification failed for received hello message.");
         }
       }
       break;
-      
+
     case WAITING_FOR_ACK:
       // Handle acknowledgement
       Serial.println("Received ack message");
