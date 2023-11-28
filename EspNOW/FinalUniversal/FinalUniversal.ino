@@ -1,83 +1,85 @@
- #include <esp_now.h>
+#include <esp_now.h>
 #include <WiFi.h>
-#include <cmath>
 
-// Constants for Diffie-Hellman key exchange
-const int Prime = 707898413;
-const int Generator = 2;
-enum State { IDLE,KEY_NOTSENT,KEY_ESTABLISHED, KEY_SENT, KEY_RECEIVED,HELLO_RECEIVED,HELLO_SENT,ACK_RECEIVED };
-State deviceState = IDLE;
-// Variables for public and private keys, and the shared secret
-int PublicKey = 0;
-int PrivateKey = 0;
-int SharedSecret = 0;
+
+
+uint8_t peerAddress1[] = { 0x08, 0x3A, 0xF2, 0x45, 0x3D, 0xE8 };  // Updated to match TTGO: 3C:61:05:0B:BB:90
+uint8_t peerAddress2[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };  // Matches with LILYGO: 08:3A:F2:69:CF:64
+uint8_t *peerAddress;
 #define CHANNEL 0
+// Structure for ESP-NOW peer information and message format
+esp_now_peer_info_t peerInfo;
+//message types
+struct message {
+  double Angle;
+  float Velocity;
+  uint32_t checksum;
+};
+
+struct Keymsg {
+  int PublicKey;
+  uint32_t checksum;
+};
+
+struct HelloMsg {
+  uint8_t ranhello;
+  uint32_t checksum;
+};
+
+struct AckMsg {
+  uint16_t ranack;
+  uint32_t checksum;
+};
+
+
+enum DeviceState {
+  IDLE,
+  WAITING_FOR_ACK,
+  KEY_EXCHANGE,
+  CONNECTED,
+  WAITING_KEY_EXCHANGE
+};
+
+enum LeaderState {
+  LEADER,
+  FOLLOWER
+};
+
+DeviceState deviceState = IDLE;
+
+
+bool myKeySent = false;
 bool keyEstablished = false;  // Flag to check if the key has been established
 bool isInitiator = false;
 
 
-int KEY_EXCHANGE_TIMEOUT = 1000;
+// Constants for Diffie-Hellman key exchange
+const int Prime = 707898413;
+const int Generator = 2;
+
+int PrivateKey = 0;
+int SharedSecret = 0;
+
+
+long KEY_EXCHANGE_TIMEOUT = 800;
 
 
 
-// Structure for ESP-NOW peer information and message format
-esp_now_peer_info_t peerInfo;
-
-
-struct message {
-  double Angle;
-  float Speed;
-  uint8_t checksum;
-} __attribute__((packed));
-
-struct Keymsg {
-  int PublicKey;
-  uint8_t checksum;
-} __attribute__((packed));
-
-
-struct HelloMsg {
-  uint8_t ranhello;
-  uint8_t checksum;
-} __attribute__((packed));
-
-struct AckMsg {
-  uint16_t ranack;
-  uint8_t checksum;
-} __attribute__((packed));
-
-
-
-uint8_t peerAddress1[] = { 0x08, 0x3A, 0xF2, 0x45, 0x3D, 0xE8 }; // Updated to match TTGO: 3C:61:05:0B:BB:90
-uint8_t peerAddress2[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 }; // Matches with LILYGO: 08:3A:F2:69:CF:64
-
-// Function prototypes
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len);
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
-void establishKey();
-void encryptmsg(uint8_t *message, size_t messageSize);
-void decryptmsg(uint8_t *message, size_t messageSize);
-void addChecksumToMessage(message *msg);
-void printMessageBytes(message msg);
-uint8_t calculateChecksum(const void *data, size_t length);
-uint8_t peerAddress[]= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-// Initialize ESP-NOW with basic settings
 void InitESP() {
   WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
-  WiFi.disconnect();    // Disconnect from any Wi-Fi network
-  Serial.println(WiFi.macAddress());    
+  WiFi.disconnect();
+  Serial.println(WiFi.macAddress());
   // Initialize ESP-NOW, restart on failure
   if (esp_now_init() != ESP_OK) {
     ESP.restart();
   }
 
   // Set up peer information with address and channel
-  uint8_t peerAddress[6];
   if (WiFi.macAddress() == String("08:3A:F2:45:3D:E8")) {
-  memcpy(peerAddress, peerAddress2, sizeof(peerAddress1));
-} else {
-  memcpy(peerAddress, peerAddress1, sizeof(peerAddress2));
-}
+    peerAddress = peerAddress2;
+  } else {
+    peerAddress = peerAddress1;
+  }
   memcpy(peerInfo.peer_addr, peerAddress, 6);
   peerInfo.channel = CHANNEL;
   peerInfo.encrypt = false;
@@ -99,88 +101,205 @@ void setup() {
 }
 
 void loop() {
-  // Continuously attempt to sync key if not established
-  if (!keyEstablished) {
-    establishKey();
-    }
+  switch (deviceState) {
+    case IDLE:
+      {
+        Serial.println("IDLE");
+        // Send "hello" message and transition to WAITING_FOR_ACK
+        delay(random(300, 500));  // Wait between 0,2 and 0,5 seconds
+        HelloMsg msg;
+        msg.ranhello = random(0, 255);
+        msg.checksum = crc32((uint8_t *)&msg, sizeof(HelloMsg) - sizeof(msg.checksum));
+        esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(HelloMsg));
+        deviceState = WAITING_FOR_ACK;
+        break;
+        case WAITING_FOR_ACK:
+          // If timeout, resend "hello" message
+          long timmil = millis();
+          while (millis() - timmil < KEY_EXCHANGE_TIMEOUT) {
+            if (deviceState == KEY_EXCHANGE) {
+              break;
+            }
+          }
+          if (deviceState == WAITING_FOR_ACK) {
+            Serial.println("ACK timed out.");
+            deviceState = IDLE;
+          }
+
+          break;
+      }
+    case KEY_EXCHANGE:
+      {
+        Serial.println("KEY_EXCHANGE");
+        delay(20);
+        // If key exchange complete, transition to CONNECTED
+        if (myKeySent == false) {
+          Keymsg kmsg;
+          kmsg.PublicKey = PublicKey();
+          kmsg.checksum = crc32((uint8_t *)&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
+          esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+          myKeySent = true;
+        }
+        long timmil = millis();
+
+
+        while (millis() - timmil < KEY_EXCHANGE_TIMEOUT) {
+          if (deviceState == KEY_EXCHANGE) {
+            break;
+          }
+        }
+        if (deviceState == KEY_EXCHANGE) {
+          Serial.println("Key exchange timed out.");
+          deviceState = IDLE;
+        }
+
+
+        break;
+      }
+    case WAITING_KEY_EXCHANGE:
+      {
+        Serial.println("WAITING_KEY_EXCHANGE");
+        delay(20);
+      }
+      
+    case CONNECTED:
+      {
+        
+       
+        break;
+      }
+  }
 }
-
-// Function to establish the key
-void establishKey() {
-  Serial.println("Starting key establishment...");
-    deviceState = IDLE;
-  isInitiator = false;
-  // Wait a random amount of time before retrying
-  delay(random(200, 1000)); // Wait between 0,2 and 1 seconds
-  syncKey();
-
-} 
-
 
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  // Handle incoming data based on the current state
   Serial.println("Data received");
+  switch (deviceState) {
+    case IDLE:
+      // Handle "hello" message
+      if (len == sizeof(HelloMsg)) {
+        HelloMsg *hmsg = (HelloMsg *)incomingData;
+        Serial.println("Received hello message");
+        if (hmsg->checksum == crc32(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
+          delay(20);
+          // Send back an "acknowledgement" message
+         
+          AckMsg msg;
 
-  if (len == sizeof(HelloMsg) && deviceState == IDLE) {
-    HelloMsg* hmsg = (HelloMsg*)incomingData;
-    if (hmsg->checksum == calculateChecksum(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
-      deviceState = HELLO_RECEIVED;
-      if (!isInitiator) {
-        // Send back an "acknowledgement" message
-        AckMsg amsg;
-        amsg.checksum = calculateChecksum(&amsg, sizeof(amsg) - sizeof(amsg.checksum));
-        esp_now_send(peerAddress, (uint8_t *)&amsg, sizeof(amsg));
+          msg.ranack = 31108;
+          msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
+          
+          esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
+          deviceState = WAITING_KEY_EXCHANGE;
+        } else {
+          Serial.println("Checksum verification failed for received hello message.");
+        }
       }
-    } else {
-      Serial.println("Checksum verification failed for received hello message.");
-    }
-  }
+      break;
+      
+    case WAITING_FOR_ACK:
+      // Handle acknowledgement
+      Serial.println("Received ack message");
+      
 
-  if (len == sizeof(AckMsg) && deviceState == HELLO_RECEIVED && isInitiator) {
-    AckMsg* amsg = (AckMsg*)incomingData;
-    if (amsg->checksum == calculateChecksum(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
-      deviceState = ACK_RECEIVED;
-    } else {
-      Serial.println("Checksum verification failed for received acknowledgement message.");
-    }
-  }
+      if (len == sizeof(AckMsg)) {
 
-  if (len == sizeof(Keymsg) && deviceState == ACK_RECEIVED) {
-    Keymsg *kmsg = (Keymsg *)incomingData;
-    // Verify checksum
-    if (kmsg->checksum == calculateChecksum(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-      // Calculate the shared secret
-      SharedSecret = modularExponentiation(kmsg->PublicKey, PrivateKey, Prime);
-      keyEstablished = true;
-      deviceState = KEY_ESTABLISHED;
-      Serial.println("Key exchange complete. Shared secret established.");
-    } else {
-      Serial.println("Checksum verification failed for received public key.");
-    }
-  } else if (len == sizeof(message) && deviceState == KEY_ESTABLISHED) {
-    message *msg = (message *)incomingData;
-    decryptmsg((uint8_t *)msg, sizeof(message));
-    Serial.print("Received: ");
-    printMessageBytes(*msg);
-    Serial.println();
+        AckMsg *amsg = (AckMsg *)incomingData;
+        if (amsg->checksum == crc32(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
+          Serial.println("ACK verified");
+          deviceState = KEY_EXCHANGE;
+        } else {
+          Serial.println("Checksum verification failed for received ack message.");
+        }
+
+      } else {
+        Serial.println("Wrong size for ack message.");
+      }
+
+      break;
+    case KEY_EXCHANGE:
+      // Handle key exchange
+      if (len == sizeof(Keymsg) ) {
+        Serial.println("Received public key.");
+        Keymsg *kmsg = (Keymsg *)incomingData;
+        if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
+          SharedSecret = SecretKey(kmsg->PublicKey);
+
+          Serial.println("Verified key public key.");
+          if (myKeySent == false) {
+            kmsg->PublicKey = PublicKey();
+            kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
+            esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+            Serial.println("Sent public key.");
+             // Send message
+              Serial.println("Works nicely");
+            deviceState = CONNECTED;
+            myKeySent = true;
+          } else {
+            // Send message
+              Serial.println("Works nicely");
+            deviceState = CONNECTED;
+          }
+
+        } else {
+
+          Serial.println("Checksum verification failed for received public key.");
+        }
+      } else
+      {
+        Serial.println("Wrong size for key message.");
+      }
+      
+      break;
+    case WAITING_KEY_EXCHANGE:
+      // Handle key exchange
+      
+      if (len == sizeof(Keymsg)) {
+          Serial.println("Received public key.");
+        Keymsg *kmsg = (Keymsg *)incomingData;
+        if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
+          SharedSecret = SecretKey(kmsg->PublicKey);
+          Serial.println("Verified key waitn public key.");
+          if (myKeySent == false) {
+            kmsg->PublicKey = PublicKey();
+            kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
+            esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+            myKeySent = true;
+            deviceState = CONNECTED;
+          } else {
+            deviceState = CONNECTED;
+          }
+
+        } else {
+          Serial.println("Checksum verification failed for received public key.");
+        }
+      } else {
+        Serial.println("Wrong size for key message.");
+      }
+      break;
+    case CONNECTED:
+      // Handle normal communication
+      if (len == sizeof(message)) {
+        message *msg = (message *)incomingData;
+        decryptmsg((uint8_t *)msg, sizeof(message));
+        Serial.print("Received: ");
+        Serial.print(msg->Angle);
+        Serial.print(" ");
+        Serial.print(msg->Velocity);
+        Serial.println();
+      }
+      break;
   }
 }
 
 
-
-
-
-
-// Function to handle the status of sent data
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.println("Data sent");
+  
   if (status != ESP_NOW_SEND_SUCCESS) {
     Serial.println("Failed to send data");
-  } else {
-    Serial.println("Data sent successfully");
-  }
+  } 
 }
-
 
 
 // Function to encrypt a message
@@ -188,17 +307,7 @@ void encryptmsg(uint8_t *message, size_t messageSize) {
   for (size_t i = 0; i < messageSize; i++) {
     message[i] = message[i] ^ (SharedSecret >> (8 * (i % 4)));  // XOR encryption
   }
-
-  // Print the encrypted message in a human-readable format
-  for (size_t i = 0; i < messageSize; i++) {
-    Serial.print(message[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
 }
-
-
-
 
 // Function to decrypt a message
 void decryptmsg(uint8_t *message, size_t messageSize) {
@@ -208,30 +317,29 @@ void decryptmsg(uint8_t *message, size_t messageSize) {
 }
 
 
-
-
 // Function to add a checksum to a message
 void addChecksumToMessage(message *msg) {
-  msg->checksum = calculateChecksum(msg, sizeof(message) - sizeof(msg->checksum));
+  msg->checksum = crc32(msg, sizeof(message) - sizeof(msg->checksum));
 }
 
 
 
+uint32_t crc32(const void *data, size_t length) {
+    uint32_t crc = 0xFFFFFFFF;
+    const uint8_t *bytes = static_cast<const uint8_t*>(data);
 
-
-// Function to calculate checksum of a message
-uint8_t calculateChecksum(const void *data, size_t length) {
-  uint8_t checksum = 0;
-  const uint8_t *bytes = (const uint8_t *)data;
-
-  for (size_t i = 0; i < length; ++i) {
-    checksum += bytes[i];  // Sum the bytes for checksum
-  }
-
-  return checksum;
+    for (size_t i = 0; i < length; ++i) {
+        crc ^= (uint32_t)bytes[i];
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ 0xEDB88320;  // 0xEDB88320 is the reversed polynomial for CRC-32
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return ~crc;  // Final negation
 }
-
-
 
 
 
@@ -251,71 +359,17 @@ int modularExponentiation(int base, int exponent, int modulus) {
   return static_cast<int>(result);
 }
 
-
-
-
-
-
-
-void syncKey() {
-  Serial.println("syncKey called");
-
-  // Delay to avoid rapid retransmissions
-  delay(random(100, 5000));
-  Serial.println("After random delay");
-
-  if (deviceState == IDLE) {
-    Serial.println("Device State: IDLE");
-    if (!isInitiator) {
-      Serial.println("Not an initiator, sending HelloMsg");
-      HelloMsg hmsg;
-      hmsg.checksum = calculateChecksum(&hmsg, sizeof(hmsg) - sizeof(hmsg.checksum));
-      esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&hmsg, sizeof(hmsg));
-      if (result == ESP_OK) {
-        Serial.println("HelloMsg sent successfully");
-      } else {
-        Serial.println("Error sending HelloMsg");
-      }
-      deviceState = HELLO_SENT;
-      isInitiator = true;
-    } else {
-      Serial.println("Already an initiator, not sending HelloMsg again");
-    }
-  } else if (deviceState == HELLO_RECEIVED) {
-    Serial.println("Device State: HELLO_RECEIVED, proceeding with key exchange");
-    if (PrivateKey == 0) {
-      PrivateKey = esp_random();
-      PublicKey = modularExponentiation(Generator, PrivateKey, Prime);
-      Serial.print("Generated PrivateKey: "); Serial.println(PrivateKey);
-      Serial.print("Generated PublicKey: "); Serial.println(PublicKey);
-    }
-    Keymsg kmsg;
-    kmsg.PublicKey = PublicKey;
-    kmsg.checksum = calculateChecksum(&kmsg, sizeof(kmsg) - sizeof(kmsg.checksum));
-    esp_err_t result = esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(kmsg));
-    if (result == ESP_OK) {
-      deviceState = KEY_SENT;
-      Serial.println("PublicKey sent successfully");
-    } else {
-      Serial.println("Error sending public key");
-    }
-  } else {
-    Serial.print("Device State: "); Serial.println(deviceState);
-    Serial.println("No action taken");
+// publickey generate function
+int PublicKey() {
+  if (PrivateKey == 0) {
+    PrivateKey = esp_random() % Prime;
   }
+
+
+  return modularExponentiation(Generator, PrivateKey, Prime);
 }
 
-
-
-
-
-
-// Function to print message bytes
-void printMessageBytes(message msg) {
-  Serial.print("Angle: ");
-  Serial.print(msg.Angle);
-  Serial.print(", Speed: ");
-  Serial.print(msg.Speed);
-  Serial.print(", Checksum: ");
-  Serial.print(msg.checksum);
+// secretkey generate function
+int SecretKey(int rPublicKey) {
+  return modularExponentiation(rPublicKey, PrivateKey, Prime);
 }
