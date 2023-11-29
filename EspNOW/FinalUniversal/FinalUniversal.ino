@@ -141,6 +141,7 @@ void loop() {
         lastAckTime = currentMillis;  // Start the timeout for the acknowledgement
 
         }
+        break;
       }
     case WAITING_FOR_ACK:
       {
@@ -175,6 +176,7 @@ void loop() {
     case WAITING_KEY_EXCHANGE:
       {
         ackcounter = 0;
+        break;
       }
 
       
