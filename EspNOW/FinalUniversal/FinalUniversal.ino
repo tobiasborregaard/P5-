@@ -42,16 +42,18 @@ enum DeviceState {
   WAITING_FOR_ACK,
   KEY_EXCHANGE,
   CONNECTED,
-  WAITING_KEY_EXCHANGE
+  WAITING_KEY_EXCHANGE,
+ 
 };
 
 enum LeaderState {
+  Undefined,
   LEADER,
   FOLLOWER
 };
 
 DeviceState deviceState = IDLE;
-
+LeaderState leaderState = Undefined;
 
 bool myKeySent = false;
 bool keyEstablished = false;  // Flag to check if the key has been established
@@ -66,10 +68,17 @@ int PrivateKey = 0;
 int SharedSecret = 0;
 
 
-long KEY_EXCHANGE_TIMEOUT = 5000;
 
 
 
+unsigned long lastHelloTime = 0;
+unsigned long helloInterval = random(200, 4000);
+unsigned long lastAckTime = 0;
+unsigned long ackTimeout = 2000;
+unsigned long lastKeyExchangeTime = 0;
+unsigned long keyExchangeTimeout = 2000;
+
+unsigned int ackcounter = 0;
 void InitESP() {
   WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
   WiFi.disconnect();
@@ -106,156 +115,102 @@ void setup() {
 }
 
 void loop() {
+  unsigned long currentMillis = millis();
   switch (deviceState) {
     case IDLE:
       {
+        isInitiator = false;
         myKeySent = false;
+        PrivateKey = 0;
+        keyEstablished = false;
+
         Serial.println("IDLE");
+
         // Send "hello" message and transition to WAITING_FOR_ACK
-        delay(random(300, 1000));  // Wait between 0,2 and 0,5 seconds
+
+        if (currentMillis - lastHelloTime >= helloInterval) {
+
+        lastHelloTime = currentMillis;
+        // Send "hello" message and transition to WAITING_FOR_ACK
         HelloMsg msg;
         msg.ranhello = random(0, 255);
         msg.checksum = crc32((uint8_t *)&msg, sizeof(HelloMsg) - sizeof(msg.checksum));
         esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(HelloMsg));
         deviceState = WAITING_FOR_ACK;
-        break;
-        case WAITING_FOR_ACK:
-          // If timeout, resend "hello" message
-          long timmil = millis();
-          while (millis() - timmil < KEY_EXCHANGE_TIMEOUT) {
-            if (deviceState == KEY_EXCHANGE) {
-              break;
-            }
-          }
-          if (deviceState == WAITING_FOR_ACK) {
-            Serial.println("ACK timed out.");
-            deviceState = IDLE;
-          }
+        
+        lastAckTime = currentMillis;  // Start the timeout for the acknowledgement
 
-          break;
+        }
+      }
+    case WAITING_FOR_ACK:
+      {
+    
+       if (currentMillis - lastAckTime >= ackTimeout) {
+    
+        Serial.println("ACK timed out.");
+        deviceState = IDLE;
+      }
+    
+        break;
       }
     case KEY_EXCHANGE:
       {
+        ackcounter = 0;
         Serial.println("KEY_EXCHANGE");
-        delay(20);
-        // If key exchange complete, transition to CONNECTED
-        if (myKeySent == false) {
-          Keymsg kmsg;
-          kmsg.PublicKey = PublicKey();
-          kmsg.checksum = crc32((uint8_t *)&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
-          esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
-          myKeySent = true;
+         if (myKeySent == false) {
+        Keymsg kmsg;
+        kmsg.PublicKey = PublicKey();
+        kmsg.checksum = crc32((uint8_t *)&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
+        esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+        myKeySent = true;
+        lastKeyExchangeTime = currentMillis;  // Start the timeout for the key exchange
+      } else if (currentMillis - lastKeyExchangeTime >= keyExchangeTimeout) {
+        // If timeout, go back to IDLE
+        Serial.println("Key exchange timed out.");
+        deviceState = IDLE;
+      }
+
+        break;
+      }
+    case WAITING_KEY_EXCHANGE:
+      {
+        ackcounter = 0;
+      }
+
+      
+    case CONNECTED:
+      {
+
+        delay(1000);
+        if(leaderState == LEADER){
+          message msg;
+          msg.Angle = esp_random();
+          msg.Velocity = esp_random();
+          addChecksumToMessage(&msg);
+          encryptmsg((uint8_t *)&msg, sizeof(message));
+          Serial.print("Sent: ");
+          Serial.print(msg.Angle);
+          Serial.print(" ");
+          Serial.print(msg.Velocity);
+          Serial.println();
+          esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
         }
         
-
-        long timmil = millis();
-        while (millis() - timmil < 5000) {
-          if (deviceState == KEY_EXCHANGE) {
-            break;
-          }
-        }
-        if (deviceState == KEY_EXCHANGE) {
-
-          Serial.println("Key exchange timed out.");
-          deviceState = IDLE;
-        }
-
-
-        break;
-      }
-    case WAITING_KEY_EXCHANGE:
-      {
-        if (isInitiator == false) {
-          Serial.println("WAITING_KEY_EXCHANGE");
-          delay(20);
-          isInitiator = true;
-        }
-        delay(5000);
-      }
-    case CONNECTED:
-      {
-
-
+        Serial.println("CONNECTED");
         break;
       }
   }
 }
 
 
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  // Handle incoming data based on the current state
-  Serial.println("Data received");
-  switch (deviceState) {
-    case IDLE:
-      // Handle "hello" message
-      if (len == sizeof(HelloMsg)) {
-        HelloMsg *hmsg = (HelloMsg *)incomingData;
-        Serial.println("Received hello message");
-        if (hmsg->checksum == crc32(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
-          delay(20);
-          // Send back an "acknowledgement" message
-
-          AckMsg msg;
-
-          msg.ranack = 31108;
-          msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
-
-          esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
-          delay(20);
-          deviceState = WAITING_KEY_EXCHANGE;
-        } else {
-          Serial.println("Checksum verification failed for received hello message.");
-        }
-      }
-      break;
-
-    case WAITING_FOR_ACK:
-      // Handle acknowledgement
-      Serial.println("Received ack message");
-
-
-      if (len == sizeof(AckMsg)) {
-
-        AckMsg *amsg = (AckMsg *)incomingData;
-        if (amsg->checksum == crc32(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
-          Serial.println("ACK verified");
-          deviceState = KEY_EXCHANGE;
-        } else {
-          Serial.println("Checksum verification failed for received ack message.");
-        }
-
-      } else {
-        Serial.println("Wrong size for ack message.");
-      }
-
-      break;
-    case KEY_EXCHANGE:
-      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState);
-      break;
-    case WAITING_KEY_EXCHANGE:
-      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState);
-
-      break;
-      break;
-    case CONNECTED:
-      // Handle normal communication
-      if (len == sizeof(message)) {
-        message *msg = (message *)incomingData;
-        decryptmsg((uint8_t *)msg, sizeof(message));
-        Serial.print("Received: ");
-        Serial.print(msg->Angle);
-        Serial.print(" ");
-        Serial.print(msg->Velocity);
-        Serial.println();
-      }
-      break;
-  }
-}
 
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
   if (status != ESP_NOW_SEND_SUCCESS) {
+    if (deviceState == CONNECTED){
+      deviceState = IDLE;
+    }
     Serial.println("Failed to send data");
   }
 }
@@ -263,6 +218,9 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 // Function to encrypt a message
 void encryptmsg(uint8_t *message, size_t messageSize) {
+  if (messageSize > sizeof(message)) {
+    messageSize = sizeof(message);
+  }
   for (size_t i = 0; i < messageSize; i++) {
     message[i] = message[i] ^ (SharedSecret >> (8 * (i % 4)));  // XOR encryption
   }
@@ -334,9 +292,10 @@ int SecretKey(int rPublicKey) {
 }
 
 
-void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState &deviceState) {
+void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState deviceState, String key) {
   if (len == sizeof(Keymsg)) {
     Serial.println("Received public key.");
+    Serial.println(key);
     Keymsg *kmsg = (Keymsg *)incomingData;
     if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
       SharedSecret = SecretKey(kmsg->PublicKey);
@@ -347,10 +306,12 @@ void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddres
         esp_now_send(peerAddress, (uint8_t *)kmsg, sizeof(Keymsg));
         Serial.println("Sent public key.");
         Serial.println("Key exchange complete.");
-        deviceState = CONNECTED;
         myKeySent = true;
+        keyEstablished = true;
+        deviceState = CONNECTED;
       } else {
         Serial.println("Key exchange complete.");
+        keyEstablished = true;
         deviceState = CONNECTED;
       }
     } else {
@@ -358,5 +319,87 @@ void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddres
     }
   } else {
     Serial.println("Wrong size for key message.");
+  }
+}
+
+
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  // Handle incoming data based on the current state
+  Serial.println("Data received");
+  
+  // if (len == sizeof(retmsg)) {
+  //   retmsg *rmsg = (retmsg *)incomingData;
+  //   Serial.println("Received ret message");
+  //   if (rmsg->ret == true) {
+  //     deviceState = IDLE;
+  //   } 
+  // }
+  switch (deviceState) {
+    case IDLE:
+      // Handle "hello" message
+      if (len == sizeof(HelloMsg)) {
+        HelloMsg *hmsg = (HelloMsg *)incomingData;
+        Serial.println("Received hello message");
+        if (hmsg->checksum == crc32(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
+          
+          // Send back an "acknowledgement" message
+          AckMsg msg;
+          msg.ranack = 31108;
+          msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
+          leaderState = FOLLOWER;
+          deviceState = WAITING_KEY_EXCHANGE;
+          esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
+        } else {
+          Serial.println("Checksum verification failed for received hello message.");
+        }
+      }
+      break;
+
+    case WAITING_FOR_ACK:
+      // Handle acknowledgement
+      Serial.println("Received ack message");
+      if (len == sizeof(AckMsg)) {
+        AckMsg *amsg = (AckMsg *)incomingData;
+        if (amsg->checksum == crc32(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
+          Serial.println("ACK verified");
+          deviceState = KEY_EXCHANGE;
+          leaderState = LEADER;
+        } else {
+          Serial.println("Checksum verification failed for received ack message.");
+        }
+      } else {
+        Serial.println("Wrong size for ack message.");
+      }
+
+      break;
+    case KEY_EXCHANGE:
+      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState, "Key_exchange");
+      
+      if (deviceState != CONNECTED and keyEstablished == true){
+        deviceState = CONNECTED;
+      }
+      break;
+    case WAITING_KEY_EXCHANGE:
+      handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState, "waiting_Key_exchange");
+      
+      if (deviceState != CONNECTED and keyEstablished == true){
+        deviceState = CONNECTED;
+      }
+      break;
+      
+    case CONNECTED:
+
+      // Handle normal communication
+      if (len == sizeof(message)) {
+        message *msg = (message *)incomingData;
+        decryptmsg((uint8_t *)msg, sizeof(message));
+        Serial.print("Received: ");
+        Serial.print(msg->Angle);
+        Serial.print(" ");
+        Serial.print(msg->Velocity);
+        Serial.println();
+      }
+      break;
   }
 }
