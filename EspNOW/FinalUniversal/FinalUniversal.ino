@@ -12,7 +12,7 @@ struct message {
   double Angle;
   float Velocity;
   uint32_t checksum;
-};
+} __attribute__((packed));
 
 struct Keymsg {
   int PublicKey;
@@ -68,6 +68,7 @@ unsigned long lastAckTime = 0;
 unsigned long ackTimeout = 2000;
 unsigned long lastKeyExchangeTime = 0;
 unsigned long keyExchangeTimeout = 2000;
+unsigned long lastSendTime = 0;
 
 
 double PrevAngle;
@@ -116,7 +117,6 @@ void loop() {
       {
         isInitiator = false;
         myKeySent = false;
-        PrivateKey = 0;
         keyEstablished = false;
 
         Serial.println("IDLE");
@@ -177,24 +177,28 @@ void loop() {
     case CONNECTED:
       {
 
-        delay(1000);
         if (leaderState == LEADER) {
-          message msg;
-          msg.Angle = esp_random();
-          PrevAngle = msg.Angle;
-          msg.Velocity = esp_random();
-          PrevVelocity = msg.Velocity;
-          addChecksumToMessage(&msg);
-          encryptmsg((uint8_t *)&msg, sizeof(message));
-          Serial.print("Sent: ");
-          Serial.print(msg.Angle);
-          Serial.print(" ");
-          Serial.print(msg.Velocity);
-          Serial.println();
-          esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
+          if (currentMillis - lastSendTime >= keyExchangeTimeout) {
+            Serial.println(SharedSecret);
+            message msg;
+            msg.Angle = 123456789.00;  //esp_random();
+            PrevAngle = msg.Angle;
+            msg.Velocity = 123456789.00;  //esp_random();
+            PrevVelocity = msg.Velocity;
+            encryptmsg((uint8_t *)&msg, sizeof(message));  // Encrypt the whole message including the checksum
+            addChecksumToMessage(&msg);                    // Calculate checksum on the plain message
+            Serial.print("Sent: ");
+            Serial.print(PrevAngle);
+            Serial.print(" ");
+            Serial.print(PrevVelocity);
+            Serial.println();
+            lastSendTime = currentMillis;
+            esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
+          }
         }
 
-        Serial.println("CONNECTED");
+
+
         break;
       }
   }
@@ -286,6 +290,7 @@ void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddres
     Serial.println(key);
     Keymsg *kmsg = (Keymsg *)incomingData;
     if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
+      Serial.println(kmsg->PublicKey);
       SharedSecret = SecretKey(kmsg->PublicKey);
       Serial.println("Verified key public key.");
       if (!myKeySent) {
@@ -386,27 +391,30 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         Serial.println();
         esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
       }
-      // Handle normal communication
-      if (len == sizeof(message) and leaderState == FOLLOWER) {
-
+      if (len == sizeof(message) && leaderState == FOLLOWER) {
         message *msg = (message *)incomingData;
+        Serial.println("Received message");
 
 
-        decryptmsg((uint8_t *)msg, sizeof(message));
+        // Verify checksum after decrypting
         if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
+          Serial.println(SharedSecret);
+          decryptmsg((uint8_t *)msg, sizeof(message));  // Decrypt the whole message including the checksum
           Serial.print("Received: ");
           Serial.print(msg->Angle);
           Serial.print(" ");
           Serial.print(msg->Velocity);
           Serial.println();
-          // Send back an "acknowledgement" message
+          // (Place for sending back an acknowledgment if needed)
+        } else {
+          Serial.println("Checksum verification failed for received message.");
           retmsg rmsg;
           rmsg.ret = true;
           esp_now_send(peerAddress, (uint8_t *)&rmsg, sizeof(retmsg));
-        } else {
-          Serial.println("Checksum verification failed for received message.");
         }
       }
+
+
       break;
   }
 }
