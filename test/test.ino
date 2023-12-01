@@ -27,7 +27,7 @@ void setup(){
 
 
 //exponentiation by squaring method
-int modularExponentiation(int base, int exponent, int modulus) {
+int modularExponentiation(u_int base, u_int exponent, u_int modulus) {
   long long result = 1;
   long long x = base % modulus;
 
@@ -38,13 +38,23 @@ int modularExponentiation(int base, int exponent, int modulus) {
     x = (x * x) % modulus;
     exponent >>= 1;
   }
-
+ return static_cast<int>(result);
 }
+int prime = 707898413;
+int generator = 2 ;
 
+int prkey(){
+ int PrivateKey = esp_random() % prime;
+ 
+ return PrivateKey;
+}
 void loop(){
-    Serial.println(modularExponentiation(2, 3, 5));
-    int a=(pow(2,3));
-    int b= a%5;
+    Serial.println("this is cool");
+    Serial.println(modularExponentiation(generator, prkey(), prime));
+    Serial.println("this is not cool");
+
+    long long a=(pow(generator,prkey()));
+    long b= a%prime;
     Serial.println(b);
     delay(1000);
 }
