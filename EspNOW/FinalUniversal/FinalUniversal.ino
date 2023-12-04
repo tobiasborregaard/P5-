@@ -3,6 +3,7 @@
 
 uint8_t peerAddress1[] = { 0x08, 0x3A, 0xF2, 0x45, 0x3D, 0xE8 };  // Updated to match TTGO: 3C:61:05:0B:BB:90
 uint8_t peerAddress2[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };  // Matches with LILYGO: 08:3A:F2:69:CF:64
+uint8_t peerAddress3[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x44 };  // Matches with esp32s: 94:B5:55:F9:06:44
 uint8_t *peerAddress;
 #define CHANNEL 0
 // Structure for ESP-NOW peer information and message format
@@ -10,7 +11,7 @@ esp_now_peer_info_t peerInfo;
 //message types
 struct message {
   double Angle;
-  float Velocity;
+  double Velocity;
   uint32_t checksum;
 } __attribute__((packed));
 
@@ -69,11 +70,35 @@ unsigned long ackTimeout = 2000;
 unsigned long lastKeyExchangeTime = 0;
 unsigned long keyExchangeTimeout = 2000;
 unsigned long lastSendTime = 0;
-
+unsigned long sendInterval = 1000;
+int maxhertz = 1000;
 
 double PrevAngle;
 float PrevVelocity;
 
+
+// int hertzToMilliseconds(int hertz) {
+//     if (hertz <= 0) {
+//         Serial.println("Hertz must be greater than zero.");
+//         return 0; // Return a default value or handle the error as needed
+//     }
+//     double result = 1000 / hertz;
+//     Serial.print("HZ to ms: ");
+//     Serial.println(result);
+//     return static_cast<int>(result);
+// }
+
+
+int packetsPerSecondCounter = 0;
+
+int lastSecondCounter = 0;
+
+int lastSecondTime = 0;
+
+int packetloss = 0;
+
+// int dsHZ = 10;
+// int HZ = hertzToMilliseconds(10);
 
 void InitESP() {
   WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
@@ -84,12 +109,15 @@ void InitESP() {
     ESP.restart();
   }
 
-  // Set up peer information with address and channel
-  if (WiFi.macAddress() == String("08:3A:F2:45:3D:E8")) {
-    peerAddress = peerAddress2;
+  //  if (WiFi.macAddress() == String("08:3A:F2:45:3D:E8")) {
+  //     peerAddress = peerAddress1; // or peerAddress3
+  // // }
+  if (WiFi.macAddress() == String("08:3A:F2:69:CF:64")) {
+    peerAddress = peerAddress3;  // or peerAddress3
   } else {
-    peerAddress = peerAddress1;
+    peerAddress = peerAddress2;  // or peerAddress2
   }
+
   memcpy(peerInfo.peer_addr, peerAddress, 6);
   peerInfo.channel = CHANNEL;
   peerInfo.encrypt = false;
@@ -118,6 +146,9 @@ void loop() {
         isInitiator = false;
         myKeySent = false;
         keyEstablished = false;
+        leaderState = Undefined;
+        // dsHZ = 10;
+        // HZ = hertzToMilliseconds(dsHZ);
 
         Serial.println("IDLE");
 
@@ -154,7 +185,11 @@ void loop() {
         Serial.println("KEY_EXCHANGE");
         if (myKeySent == false) {
           Keymsg kmsg;
-          kmsg.PublicKey = PublicKey();
+          int key = PublicKey();
+          kmsg.PublicKey = key;
+          // Serial.println("Sent public key: ");
+          // Serial.println(kmsg.PublicKey);
+          // Serial.println("Sent public key");
           kmsg.checksum = crc32((uint8_t *)&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
           esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
           myKeySent = true;
@@ -178,24 +213,48 @@ void loop() {
       {
 
         if (leaderState == LEADER) {
-          if (currentMillis - lastSendTime >= keyExchangeTimeout) {
-            Serial.println(SharedSecret);
+          // if (currentMillis - lastSecondTime>= 1000 && dsHZ < maxhertz) {
+          //     dsHZ  = dsHZ + 10;
+          //     HZ = hertzToMilliseconds(dsHZ);
+          //     lastSecondTime = currentMillis;
+          //     // Serial.print("HZ: ");
+          //     // Serial.println(HZ);
+          //   }
+           if (currentMillis - lastSendTime >= sendInterval) {
+            // Serial.println(SharedSecret);
             message msg;
-            msg.Angle = 123456789.00;  //esp_random();
+            msg.Angle = esp_random();
             PrevAngle = msg.Angle;
-            msg.Velocity = 123456789.00;  //esp_random();
+            msg.Velocity = esp_random();
             PrevVelocity = msg.Velocity;
-            encryptmsg((uint8_t *)&msg, sizeof(message));  // Encrypt the whole message including the checksum
-            addChecksumToMessage(&msg);                    // Calculate checksum on the plain message
-            Serial.print("Sent: ");
-            Serial.print(PrevAngle);
-            Serial.print(" ");
-            Serial.print(PrevVelocity);
-            Serial.println();
-            lastSendTime = currentMillis;
+            addChecksumToMessage(&msg);  // Calculate checksum on the plain message
+
+            encryptmsg((uint8_t *)&msg, sizeof(message), SharedSecret);  // Encrypt the whole message including the checksum
+            // Serial.print("Sent: ");
+            // Serial.print(PrevAngle);
+            // Serial.print(" ");
+            // Serial.print(PrevVelocity);
+            // Serial.println();
+            // lastSendTime = currentMillis;
             esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
           }
         }
+        if (leaderState == FOLLOWER) {
+          if (currentMillis - lastSecondTime >= 1000) {
+            Serial.print("Packets per second: ");
+            Serial.println( packetsPerSecondCounter);
+            Serial.print("Packetloss per second: ");
+            Serial.println( packetloss);
+            
+            
+            lastSecondTime = currentMillis;
+            lastSecondCounter = packetsPerSecondCounter;
+            packetsPerSecondCounter = 0;
+            packetloss = 0;
+          }
+
+        }
+
 
 
 
@@ -217,20 +276,17 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 
 // Function to encrypt a message
-void encryptmsg(uint8_t *message, size_t messageSize) {
-  if (messageSize > sizeof(message)) {
-    messageSize = sizeof(message);
-  }
-  for (size_t i = 0; i < messageSize; i++) {
-    message[i] = message[i] ^ (SharedSecret >> (8 * (i % 4)));  // XOR encryption
-  }
+void encryptmsg(uint8_t *data, size_t dataSize, int secretkey) {
+  for (size_t i = 0; i < dataSize; i++) {
+        data[i] = data[i] ^ (static_cast<uint8_t>(secretkey >> (8 * (i % sizeof(int)))));
+    }
 }
 
 // Function to decrypt a message
-void decryptmsg(uint8_t *message, size_t messageSize) {
-  for (size_t i = 0; i < messageSize; i++) {
-    message[i] = message[i] ^ (SharedSecret >> (8 * (i % 4)));  // XOR decryption
-  }
+void decryptmsg(uint8_t *data, size_t dataSize, int secretkey) {
+  for (size_t i = 0; i < dataSize; i++) {
+        data[i] = data[i] ^ (static_cast<uint8_t>(secretkey >> (8 * (i % sizeof(int)))));
+    }
 }
 
 // Function to add a checksum to a message
@@ -276,35 +332,52 @@ int PublicKey() {
   if (PrivateKey == 0) {
     PrivateKey = esp_random() % Prime;
   }
+  // Serial.println("PublicKey");
+  // Serial.println(PrivateKey);
+  // Serial.println(Generator);
+  // Serial.println(Prime);
+  // Serial.println(modularExponentiation(Generator, PrivateKey, Prime));
   return modularExponentiation(Generator, PrivateKey, Prime);
 }
 
 // secretkey generate function
 int SecretKey(int rPublicKey) {
+  // Serial.println("SecretKey");
+  if (PrivateKey == 0) {
+    PrivateKey = esp_random() % Prime;
+  }
+  // Serial.println(PrivateKey);
+  // Serial.println(rPublicKey);
+  // Serial.println(Prime);
+  // Serial.println(modularExponentiation(rPublicKey, PrivateKey, Prime));
   return modularExponentiation(rPublicKey, PrivateKey, Prime);
 }
 
 void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState deviceState, String key) {
   if (len == sizeof(Keymsg)) {
     Serial.println("Received public key.");
-    Serial.println(key);
     Keymsg *kmsg = (Keymsg *)incomingData;
     if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
       Serial.println(kmsg->PublicKey);
-      SharedSecret = SecretKey(kmsg->PublicKey);
+      int skey = kmsg->PublicKey;
+      SharedSecret = SecretKey(skey);
       Serial.println("Verified key public key.");
       if (!myKeySent) {
         kmsg->PublicKey = PublicKey();
+        // Serial.println("Sent public key.");
+        // Serial.println(kmsg->PublicKey);
         kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
         esp_now_send(peerAddress, (uint8_t *)kmsg, sizeof(Keymsg));
-        Serial.println("Sent public key.");
+
         Serial.println("Key exchange complete.");
         myKeySent = true;
         keyEstablished = true;
+        Serial.println(SharedSecret);
         deviceState = CONNECTED;
       } else {
         Serial.println("Key exchange complete.");
         keyEstablished = true;
+        Serial.println(SharedSecret);
         deviceState = CONNECTED;
       }
     } else {
@@ -319,7 +392,7 @@ void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddres
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   // Handle incoming data based on the current state
-  Serial.println("Data received");
+  // Serial.println("Data received");
 
   switch (deviceState) {
     case IDLE:
@@ -376,14 +449,15 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
     case CONNECTED:
       if (len == sizeof(retmsg) and leaderState == LEADER) {
+      
         retmsg *rmsg = (retmsg *)incomingData;
 
         Serial.println("Received ret message");
         message msg;
         msg.Angle = PrevAngle;
         msg.Velocity = PrevVelocity;
+        encryptmsg((uint8_t *)&msg, sizeof(message), SharedSecret);
         addChecksumToMessage(&msg);
-        encryptmsg((uint8_t *)&msg, sizeof(message));
         Serial.print("Retransmitted Sent: ");
         Serial.print(msg.Angle);
         Serial.print(" ");
@@ -393,21 +467,30 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       }
       if (len == sizeof(message) && leaderState == FOLLOWER) {
         message *msg = (message *)incomingData;
-        Serial.println("Received message");
+        // Serial.println("Received message");
 
 
         // Verify checksum after decrypting
+        decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);  // Decrypt the whole message including the checksum
+        // Serial.print("Velocity and Angle:");
+        // Serial.print(msg->Angle);
+        // Serial.print(" ");
+        // Serial.println(msg->Velocity);
+        // Serial.println(" Checksum:");
+        // Serial.println(msg->checksum);
+        // Serial.println(crc32(msg, sizeof(message) - sizeof(msg->checksum)));
         if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
-          Serial.println(SharedSecret);
-          decryptmsg((uint8_t *)msg, sizeof(message));  // Decrypt the whole message including the checksum
-          Serial.print("Received: ");
-          Serial.print(msg->Angle);
-          Serial.print(" ");
-          Serial.print(msg->Velocity);
-          Serial.println();
+          packetsPerSecondCounter++;
+          // Serial.println(SharedSecret);
+          // Serial.print("Received: ");
+          // Serial.print(msg->Angle);
+          // Serial.print(" ");
+          // Serial.print(msg->Velocity);
+          // Serial.println();
           // (Place for sending back an acknowledgment if needed)
         } else {
-          Serial.println("Checksum verification failed for received message.");
+          // Serial.println("Checksum verification failed for received message.");
+          packetloss++;
           retmsg rmsg;
           rmsg.ret = true;
           esp_now_send(peerAddress, (uint8_t *)&rmsg, sizeof(retmsg));
