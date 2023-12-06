@@ -2,7 +2,7 @@
 #include <ESP32Servo.h>
 
 Servo myservo;
-
+// børge
 // =================== PINS ==================
 /*
   Programmet crasher hvis vi prøver at bruge pinMode på en pin der ikke eksisterer.
