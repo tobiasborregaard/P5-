@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <ESP32Servo.h>
+#include <esp_now.h>
+#include <WiFi.h>
 
 Servo myservo;
-// børge
+
 // =================== PINS ==================
 /*
   Programmet crasher hvis vi prøver at bruge pinMode på en pin der ikke eksisterer.
@@ -41,10 +43,26 @@ static SemaphoreHandle_t distMutex;
 static SemaphoreHandle_t printMutex;
 static SemaphoreHandle_t orderMutex;
 
+// =================== ESP-NOW ==================
+//Mac addresses // 08:3A:F2:45:44:BC
+// 7C:DF:A1:1A:57:66
+uint8_t peerAddress[] = { 0x7C, 0xDF, 0xA1, 0x1A, 0x57, 0x66 };
+
+#define CHANNEL 0
+// Structure for ESP-NOW peer information and message format
+esp_now_peer_info_t peerInfo;
+//message types
+struct message {
+  double value;
+} __attribute__((packed));
+
 void setup() {
   Serial.begin(115200);
   
   myservo.attach(servoPin);
+
+  InitESP(); //ESPNOW init
+
 
   /*
   //Distance Sensor Init
@@ -318,4 +336,39 @@ double RelAngle(double filteredDistL, double filteredDistC, double filteredDistR
 
 int mapFloatToInt(double x, double in_min, double in_max, int out_min, int out_max) {
     return (int)((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min);
+}
+
+// ESP-NOW
+void InitESP() {
+  WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
+  WiFi.disconnect();
+  Serial.println(WiFi.macAddress());
+  // Initialize ESP-NOW, restart on failure
+  if (esp_now_init() != ESP_OK) {
+    ESP.restart();
+  }
+
+  memcpy(peerInfo.peer_addr, peerAddress, 6);
+  peerInfo.channel = CHANNEL;
+  peerInfo.encrypt = false;
+
+  // Add peer, return if failed
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    return;
+  }
+
+  // Register callback functions for receiving and sending data
+  esp_now_register_recv_cb(OnDataRecv);
+  esp_now_register_send_cb(OnDataSent);
+}
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  message *msg = (message *)incomingData;
+  Serial.println();
+  Serial.print("Message received: ");
+  Serial.println(msg->value);
+  Serial.println();
+}
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  
 }
