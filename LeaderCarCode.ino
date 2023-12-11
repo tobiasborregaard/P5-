@@ -1,48 +1,39 @@
-#include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
 #include "Diifie.h"
+//08:3A:F2:45:44:BC
+uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
+#define CHANNEL 0
 
 
-// ############# PINS #############
-const int ServoPin = 32;         // GPIO 4 on the ESP  //A1 pin på Arduino
-float input_voltage = 0.0;
+// Structure for ESP-NOW peer information and message format
+esp_now_peer_info_t peerInfo;
+//message types
 
-const int OpticPin = 39;  //pin 3 på arduino
+enum LeaderState {
+  Undefined,
+  LEADER,
+  FOLLOWER
+};
 
-double lasttimeDB = 0;
-double delaytimer = 60;
+TaskHandle_t keyexchangeHandle = NULL;
 
-double speedTimeCal = 0;
-double speedLastTime = 0;
-double deltaTime = 0.0;
+DeviceState deviceState = IDLE;
+LeaderState leaderState = LEADER;
 
-double calSpeed = 0;
-int counter = 0;
-
-int analog_value;
-double Angle;
+//=============Initialization ================//
+//========packet loss counter=================//
+int packetsPerSecondCounter = 0;
+int lastSecondCounter = 0;
+int lastSecondTime = 0;
+int packetloss = 0;
 
 //===========Retransmit==============//
 double PrevAngle;
 double PrevVelocity;
 int unknownCounter = 0;
-uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
-// uint8_t peerAddress[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x44 };
-
-#define CHANNEL 0
-// Structure for ESP-NOW peer information and message format
-esp_now_peer_info_t peerInfo;
 
 //=====sending stuff=====//
-
-TaskHandle_t keyexchangeHandle = NULL;
-TaskHandle_t SenderTaskhandle = NULL;
-
-
-DeviceState deviceState = IDLE;
-bool checkOnce = false;
-
 unsigned long lastSendTime = 0;
 unsigned long sendInterval = 1000;
 int HZ = 0;
@@ -58,48 +49,37 @@ int hertzToMilliseconds(int hertz) {
 }
 
 
-
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(115200);
-  
-  // Init Pins
-  pinMode(ServoPin, INPUT);
-  pinMode(OpticPin, INPUT_PULLUP);
-
-  attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
   HZ = hertzToMilliseconds(60);
+  Serial.begin(115200);
   InitESP();
-
   xTaskCreate(KeyExchangeTask, "KeyExchangeTask", 3000, NULL, 1, &keyexchangeHandle);
-
-  // xTaskCreate(SenderTask, "SenderTask", 3000, NULL, 1, NULL);
 }
-
+void loop() {
+}
 void SenderTask(void *pvParameters) {
-  (void) pvParameters;
+  (void)pvParameters;
   TickType_t lastWakeTime = xTaskGetTickCount();
-
-  message msg;
+  unsigned long currentMIllis1 = millis();
 
   while (1) {
-    if(millis() - speedLastTime > 300) {
-      calSpeed = 0;
-    }
-    msg.Velocity = calSpeed;
-    PrevVelocity = calSpeed;
-    msg.Angle = analogRead(ServoPin);
-    PrevAngle = analogRead(ServoPin);
-
-    esp_now_send(peerAddress, (uint8_t*)&msg, sizeof(msg));
-
+    message msg;
+    msg.Angle = esp_random();
+    PrevAngle = msg.Angle;
+    msg.Velocity = esp_random();
+    PrevVelocity = msg.Velocity;
+    addChecksumToMessage(&msg);
+    encryptmsg((uint8_t *)&msg, sizeof(message), SharedSecret);
+    esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
     vTaskDelayUntil(&lastWakeTime, HZ);
   }
 }
 
 void statusTask(void *pvParameters) {
-
+  (void)pvParameters;
   TickType_t lastWakeTime = xTaskGetTickCount();
+  bool checkOnce = false;
   while (1) {
     if (deviceState == CONNECTED) {
       if (keyEstablished == true) {
@@ -114,46 +94,8 @@ void statusTask(void *pvParameters) {
     }
   }
 }
-void loop() {
-  // put your main code here, to run repeatedly:  
-  
-}
 
-void Countup() {
-  if (millis() - lasttimeDB >= delaytimer) {
-    deltaTime = millis() - speedLastTime;
-    speedLastTime = millis();
-    //delaytimer = deltaTime * 0.35;
-    calSpeed = 0.036 / (deltaTime / 1000.0);
-    counter++;
 
-    lasttimeDB = millis();
-  }
-}
-
-// ESP-NOW
-void InitESP() {
-  WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
-  WiFi.disconnect();
-  Serial.println(WiFi.macAddress());
-  // Initialize ESP-NOW, restart on failure
-  if (esp_now_init() != ESP_OK) {
-    ESP.restart();
-  }
-
-  memcpy(peerInfo.peer_addr, peerAddress, 6);
-  peerInfo.channel = CHANNEL;
-  peerInfo.encrypt = false;
-
-  // Add peer, return if failed
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    return;
-  }
-
-  // Register callback functions for receiving and sending data
-  esp_now_register_recv_cb(OnDataRecv);
-  esp_now_register_send_cb(OnDataSent);
-}
 
 void KeyExchangeTask(void *pvParameters) {
 
@@ -165,13 +107,6 @@ void KeyExchangeTask(void *pvParameters) {
     if (deviceState == IDLE) {
       if (currentMillis - lastHelloTime >= helloInterval) {
         resetKeyExchange();  // Reset the key exchange state
-        checkOnce = false;
-
-        if (SenderTaskhandle != NULL) {
-          vTaskDelete(SenderTaskhandle);
-
-        }
-
         lastHelloTime = currentMillis;
         // Send "hello" message and transition to WAITING_FOR_ACK
         HelloMsg msg;
@@ -215,6 +150,32 @@ void KeyExchangeTask(void *pvParameters) {
     }
   }
 }
+
+// ESP-NOW
+void InitESP() {
+  WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
+  WiFi.disconnect();
+  //Serial.println(WiFi.macAddress());
+  // Initialize ESP-NOW, restart on failure
+  if (esp_now_init() != ESP_OK) {
+    ESP.restart();
+  }
+
+  memcpy(peerInfo.peer_addr, peerAddress, 6);
+  peerInfo.channel = CHANNEL;
+  peerInfo.encrypt = false;
+
+  // Add peer, return if failed
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    return;
+  }
+
+  // Register callback functions for receiving and sending data
+  esp_now_register_recv_cb(OnDataRecv);
+  esp_now_register_send_cb(OnDataSent);
+}
+
+
 //=============ESP-NOW=================//
 // Handle received data
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
@@ -284,7 +245,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
         break;
 
       case CONNECTED:
-        if (len == sizeof(retmsg)) {
+        if (len == sizeof(retmsg) and leaderState == LEADER) {
           unknownCounter = 0;
           retmsg *rmsg = (retmsg *)incomingData;
           Serial.println("Received ret message");
@@ -296,7 +257,8 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
           esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(message));
         }
-   
+
+        
     }
     //====only check for error=====//
     if (len == sizeof(AckMsg) && deviceState != WAITING_FOR_ACK) {
@@ -323,7 +285,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status != ESP_NOW_SEND_SUCCESS) {
     if (deviceState == CONNECTED) {
-      
       deviceState = IDLE;
     }
     Serial.println("Failed to send data");

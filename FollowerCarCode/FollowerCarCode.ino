@@ -362,13 +362,182 @@ void InitESP() {
   esp_now_register_send_cb(OnDataSent);
 }
 
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  message *msg = (message *)incomingData;
-  Serial.println();
-  Serial.print("Message received: ");
-  Serial.println(msg->value);
-  Serial.println();
+
+void KeyExchangeTask(void *pvParameters) {
+
+
+  while (1) {
+
+    unsigned long currentMillis = millis();
+
+   
+    if (deviceState == IDLE) {
+      if (currentMillis - lastHelloTime >= helloInterval) {
+        resetKeyExchange();  // Reset the key exchange state
+        checkOnce = false;
+        if (SenderTaskhandle != NULL) {
+          vTaskDelete(SenderTaskhandle);
+
+        }
+        lastHelloTime = currentMillis;
+        // Send "hello" message and transition to WAITING_FOR_ACK
+        HelloMsg msg;
+        msg.ranhello = random(0, 255);
+        msg.checksum = crc32((uint8_t *)&msg, sizeof(HelloMsg) - sizeof(msg.checksum));
+        esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(HelloMsg));
+        deviceState = WAITING_FOR_ACK;
+
+        lastAckTime = currentMillis;  // Start the timeout for the acknowledgement
+      }
+    }
+    if (deviceState == WAITING_FOR_ACK) {
+      if (currentMillis - lastAckTime >= ackTimeout) {
+
+        Serial.println("ACK timed out.");
+        deviceState = IDLE;
+      }
+    }
+
+    if (deviceState == KEY_EXCHANGE) {
+      if (myKeySent == false) {
+        Serial.println("KEY_EXCHANGE");
+        Keymsg kmsg;
+        int key = PublicKey();
+        kmsg.PublicKey = key;
+        kmsg.checksum = crc32((uint8_t *)&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
+        esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+        myKeySent = true;
+        lastKeyExchangeTime = currentMillis;  // Start the timeout for the key exchange
+      } else if (currentMillis - lastKeyExchangeTime >= keyExchangeTimeout) {
+        // If timeout, go back to IDLE
+        Serial.println("Key exchange timed out.");
+        deviceState = IDLE;
+      }
+    }
+
+    if (deviceState == WAITING_KEY_EXCHANGE) {
+      return;
+    }
+    if (deviceState == CONNECTED) {
+    }
+  }
 }
+
+
+
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  
+  if (status != ESP_NOW_SEND_SUCCESS) {
+    if (deviceState == CONNECTED) {
+      deviceState = IDLE;
+    }
+    Serial.println("Failed to send data");
+  }
+}
+
+
+
+void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  unknownCounter++;
+
+  if (unknownCounter > 10) {
+    deviceState = IDLE;
+    // Send back an "acknowledgement" message
+    AckMsg msg;
+    msg.ranack = 80113;
+    msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
+    esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
+  } else {
+    switch (deviceState) {
+      case IDLE:
+        // Handle "hello" message
+        if (len == sizeof(HelloMsg)) {
+          unknownCounter = 0;
+          HelloMsg *hmsg = (HelloMsg *)incomingData;
+          Serial.println("Received hello message");
+          if (hmsg->checksum == crc32(hmsg, sizeof(HelloMsg) - sizeof(hmsg->checksum))) {
+
+            // Send back an "acknowledgement" message
+            AckMsg msg;
+            msg.ranack = 31108;
+            msg.checksum = crc32((uint8_t *)&msg, sizeof(AckMsg) - sizeof(msg.checksum));
+
+            deviceState = WAITING_KEY_EXCHANGE;
+            esp_now_send(peerAddress, (uint8_t *)&msg, sizeof(msg));
+          } else {
+            Serial.println("Checksum verification failed for received hello message.");
+          }
+        }
+        break;
+
+      case WAITING_FOR_ACK:
+        // Handle acknowledgement
+        Serial.println("Received ack message");
+        if (len == sizeof(AckMsg)) {
+          unknownCounter = 0;
+          AckMsg *amsg = (AckMsg *)incomingData;
+          if (amsg->checksum == crc32(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
+            Serial.println("ACK verified");
+            deviceState = KEY_EXCHANGE;
+          } else {
+            Serial.println("Checksum verification failed for received ack message.");
+          }
+        } else {
+          Serial.println("Wrong size for ack message.");
+        }
+
+        break;
+      case KEY_EXCHANGE:
+        handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState, "Key_exchange");
+        unknownCounter = 0;
+        if (deviceState != CONNECTED and keyEstablished == true) {
+          deviceState = CONNECTED;
+        }
+        break;
+      case WAITING_KEY_EXCHANGE:
+        handleKeyExchange(incomingData, len, peerAddress, myKeySent, deviceState, "waiting_Key_exchange");
+        unknownCounter = 0;
+        if (deviceState != CONNECTED and keyEstablished == true) {
+          deviceState = CONNECTED;
+        }
+        break;
+
+      case CONNECTED:
+
+        if (len == sizeof(message)) {
+          unknownCounter = 0;
+          message *msg = (message *)incomingData;
+
+
+          // Verify checksum after decrypting
+          decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);  // Decrypt the whole message including the checksum
+
+          if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
+            packetsPerSecondCounter++;
+
+          } else {
+
+            packetloss++;
+            retmsg rmsg;
+            rmsg.ret = true;
+            esp_now_send(peerAddress, (uint8_t *)&rmsg, sizeof(retmsg));
+          }
+        }
+
+        break;
+    }
+  }
+    //====only check for error=====//
+    if (len == sizeof(AckMsg) && deviceState != WAITING_FOR_ACK) {
+      unknownCounter = 0;
+      AckMsg *amsg = (AckMsg *)incomingData;
+      if (amsg->checksum == crc32(amsg, sizeof(AckMsg) - sizeof(amsg->checksum))) {
+        if (amsg->ranack == 80113) {
+          deviceState = IDLE;
+          if (keyexchangeHandle != NULL) {
+            xTaskCreate(KeyExchangeTask, "KeyExchangeTask", 3000, NULL, 1, &keyexchangeHandle);
+          }
+        }
+      }
+    
+  }
 }
