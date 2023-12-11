@@ -2,6 +2,7 @@
 #include <ESP32Servo.h>
 #include <esp_now.h>
 #include <WiFi.h>
+#include "Diffie.h"
 
 Servo myservo;
 
@@ -54,15 +55,15 @@ double angleSum = 0;
 // 7C:DF:A1:1A:57:66
 // 94:B5:55:F9:06:44
 // 08:3A:F2:45:44:BC // LeaderCar
-uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
+// 08:3A:F2:69:CF:64
+// uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
+uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
 
 #define CHANNEL 0
 // Structure for ESP-NOW peer information and message format
 esp_now_peer_info_t peerInfo;
 //message types
-struct message {
-  double value;
-} __attribute__((packed));
+
 
 void setup() {
   Serial.begin(230400);
@@ -90,9 +91,9 @@ void setup() {
   printMutex = xSemaphoreCreateMutex();
   orderMutex = xSemaphoreCreateMutex();
 
-  xTaskCreate(Angle_Controller, "Angle controller", 4000, NULL, 3, NULL);
-  xTaskCreate(Dist_Controller, "Distance controller", 4000, NULL, 2, NULL);
-  xTaskCreate(UniTask, "UniTask", 4000, NULL, 1, NULL);
+  // xTaskCreate(Angle_Controller, "Angle controller", 4000, NULL, 3, NULL);
+  // xTaskCreate(Dist_Controller, "Distance controller", 4000, NULL, 2, NULL);
+  // xTaskCreate(UniTask, "UniTask", 4000, NULL, 1, NULL);
 }
 
 void loop() {
@@ -525,17 +526,74 @@ void InitESP() {
 }
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  message *msg = (message *)incomingData;
-  /*
-  leaderSpeed = (double)msg->value;
-  
-  Serial.println();
-  Serial.print("Message received: ");
-  Serial.println(msg->value);
-  Serial.println();
-  */
+  xSemaphoreTake(printMutex, 1000);
+  if (len == sizeof(Keymsg)){
+    
+    Keymsg *kmsg = (Keymsg *)incomingData;
+    if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
+      Serial.println(kmsg->PublicKey);
+      int skey = kmsg->PublicKey;
+      SharedSecret = SecretKey(skey);
+      Serial.println("Verified key public key.");
+      Serial.println(SharedSecret);
+      Serial.println("Key exchange complete.");
+      Keymsg mykmsg;
+      mykmsg.PublicKey = PublicKey();
+      mykmsg.checksum = crc32(&mykmsg, sizeof(Keymsg) - sizeof(mykmsg.checksum));
+      esp_now_send(peerAddress, (uint8_t *)&mykmsg, sizeof(Keymsg));
+      getSharedKey();
+      
+    } else {
+      Serial.println("Checksum verification failed for received public key.");
+    }
+  }
+  if (len == sizeof(AckMsg) ){
+    AckMsg *ack = (AckMsg *)incomingData;
+    if (ack->checksum == crc32(ack, sizeof(AckMsg) - sizeof(ack->checksum))) {
+      Serial.println("Received ack.");
+      Serial.println(ack->ranack);
+      if (ack->ranack == 1){
+        keyEstablished = true;
+      }
+    } else {
+      Serial.println("Checksum verification failed for received ack.");
+      }
+  }
+  if(len == sizeof (message)){
+    message *msg = (message *)incomingData;
+    decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret); 
+    if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
+      Serial.println("Received message.");
+      Serial.println(msg->Velocity);
+      leaderSpeed = msg->Velocity;
+    } else {
+      Serial.println("Checksum verification failed for received message.");
+    }
+
+  }
+  xSemaphoreGive(printMutex);
 }
+
+
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
+void getSharedKey() {
 
+  
+  if (myKeySent == false){
+    if (PrivateKey == 0) {
+      PrivateKey = esp_random() % Prime;
+    }
+
+    
+
+    Keymsg kmsg;
+    kmsg.PublicKey = PublicKey();
+    kmsg.checksum = crc32(&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
+    esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
+
+    myKeySent = true;
+  }
+  
+}
