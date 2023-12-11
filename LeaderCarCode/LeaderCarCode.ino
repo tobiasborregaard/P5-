@@ -136,7 +136,7 @@ void InitESP() {
   // Add peer, return if failed
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     return;
-  }
+  }       
 
   // Register callback functions for receiving and sending data
   esp_now_register_recv_cb(OnDataRecv);
