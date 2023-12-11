@@ -324,7 +324,7 @@ int modularExponentiation(int base, int exponent, int modulus) {
     exponent >>= 1;
   }
 
-  return static_cast<int>(result);
+  return (u_int64_t)result;
 }
 
 // publickey generate function
@@ -472,13 +472,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
         // Verify checksum after decrypting
         decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);  // Decrypt the whole message including the checksum
-        // Serial.print("Velocity and Angle:");
-        // Serial.print(msg->Angle);
-        // Serial.print(" ");
-        // Serial.println(msg->Velocity);
-        // Serial.println(" Checksum:");
-        // Serial.println(msg->checksum);
-        // Serial.println(crc32(msg, sizeof(message) - sizeof(msg->checksum)));
+       
         if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
           packetsPerSecondCounter++;
           // Serial.println(SharedSecret);
