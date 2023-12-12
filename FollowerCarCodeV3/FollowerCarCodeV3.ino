@@ -574,25 +574,18 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   xSemaphoreGive(printMutex);
 }
 
-
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 void getSharedKey() {
-
-  
   if (myKeySent == false){
     if (PrivateKey == 0) {
       PrivateKey = esp_random() % Prime;
     }
-
-    
-
     Keymsg kmsg;
     kmsg.PublicKey = PublicKey();
     kmsg.checksum = crc32(&kmsg, sizeof(Keymsg) - sizeof(kmsg.checksum));
     esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
-
     myKeySent = true;
   }
   
