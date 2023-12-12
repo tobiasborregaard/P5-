@@ -1,18 +1,6 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-
-
-enum DeviceState {
-  IDLE,
-  WAITING_FOR_ACK,
-  KEY_EXCHANGE,
-  CONNECTED,
-  WAITING_KEY_EXCHANGE,
-
-};
-
-
 struct message {
   double Angle;
   double Velocity;
@@ -24,27 +12,18 @@ struct Keymsg {
   uint32_t checksum;
 };
 
-struct HelloMsg {
-  uint8_t ranhello;
-  uint32_t checksum;
-};
-
 struct AckMsg {
   uint32_t ranack;
   uint32_t roger;
   uint32_t checksum;
 };
 
-struct retmsg {
-  bool ret;
-};
 
 //======initializing variables==========
 //=====Diffie hellmann key exchange=========
 
 bool myKeySent = false;
 bool keyEstablished = false;  // Flag to check if the key has been established
-bool isInitiator = false;
 
 const int Prime = 707898413;
 const int Generator = 2;
@@ -132,41 +111,7 @@ int SecretKey(int rPublicKey) {
   return modularExponentiation(rPublicKey, PrivateKey, Prime);
 }
 
-void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState deviceState, String key) {
-  if (len == sizeof(Keymsg)) {
-    Serial.println("Received public key.");
-    Keymsg *kmsg = (Keymsg *)incomingData;
-    if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-      Serial.println(kmsg->PublicKey);
-      int skey = kmsg->PublicKey;
-      SharedSecret = SecretKey(skey);
-      Serial.println("Verified key public key.");
-      if (!myKeySent) {
-        kmsg->PublicKey = PublicKey();
-        // Serial.println("Sent public key.");
-        // Serial.println(kmsg->PublicKey);
-        kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
-        esp_now_send(peerAddress, (uint8_t *)kmsg, sizeof(Keymsg));
-
-        Serial.println("Key exchange complete.");
-        myKeySent = true;
-        Serial.println(SharedSecret);
-        deviceState = CONNECTED;
-        keyEstablished = true;
-      } else {
-        Serial.println("Key exchange complete.");
-        Serial.println(SharedSecret);
-        deviceState = CONNECTED;
-        keyEstablished = true;
-      }
-    } else {
-      Serial.println("Checksum verification failed for received public key.");
-    }
-  } else {
-    Serial.println("Wrong size for key message.");
-  }
-}
-
+// Function to 
 void resetKeyExchange() {
   myKeySent = false;
   keyEstablished = false;
