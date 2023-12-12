@@ -56,10 +56,10 @@ double angleSum = 0;
 // 94:B5:55:F9:06:44
 // 08:3A:F2:45:44:BC // LeaderCar
 // 08:3A:F2:69:CF:64
-// uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
-uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
+// uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
+uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x45, 0x44, 0xBC };
 
-#define CHANNEL 0
+#define CHANNEL 0æ
 // Structure for ESP-NOW peer information and message format
 esp_now_peer_info_t peerInfo;
 //message types
