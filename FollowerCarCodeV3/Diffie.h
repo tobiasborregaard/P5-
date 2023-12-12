@@ -43,8 +43,8 @@ unsigned long keyExchangeTimeout = 2000;
 // Function to encrypt a message
 void encryptmsg(uint8_t *data, size_t dataSize, int secretkey) {
   for (size_t i = 0; i < dataSize; i++) {
-        data[i] = data[i] ^ (static_cast<uint8_t>(secretkey >> (8 * (i % sizeof(int)))));
-    }
+      data[i] = data[i] ^ (static_cast<uint8_t>(secretkey >> (8 * (i % sizeof(int)))));
+  }
 }
 
 // Function to decrypt a message
@@ -117,7 +117,5 @@ void resetKeyExchange() {
   keyEstablished = false;
   isInitiator = false;
   PrivateKey = 0;
-  SharedSecret = 0;
-  
-  
+  SharedSecret = 0; 
 }
