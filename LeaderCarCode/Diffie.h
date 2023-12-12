@@ -61,12 +61,12 @@ unsigned long keyExchangeTimeout = 2000;
 
 int hertzToMilliseconds(int hertz) {
     if (hertz <= 0) {
-        Serial.println("Hertz must be greater than zero.");
+        // Serial.println("Hertz must be greater than zero.");
         return 0; // Return a default value or handle the error as needed
     }
     double result = 1000 / hertz;
-    Serial.print("HZ to ms: ");
-    Serial.println(result);
+    // Serial.print("HZ to ms: ");
+    // Serial.println(result);
     return static_cast<int>(result);
 }
 
@@ -142,47 +142,10 @@ int SecretKey(int rPublicKey) {
   return modularExponentiation(rPublicKey, PrivateKey, Prime);
 }
 
-void handleKeyExchange(const uint8_t *incomingData, int len, uint8_t *peerAddress, bool &myKeySent, DeviceState deviceState, String key) {
-  if (len == sizeof(Keymsg)) {
-    Serial.println("Received public key.");
-    Keymsg *kmsg = (Keymsg *)incomingData;
-    if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-      Serial.println(kmsg->PublicKey);
-      int skey = kmsg->PublicKey;
-      SharedSecret = SecretKey(skey);
-      Serial.println("Verified key public key.");
-      if (!myKeySent) {
-        kmsg->PublicKey = PublicKey();
-        // Serial.println("Sent public key.");
-        // Serial.println(kmsg->PublicKey);
-        kmsg->checksum = crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum));
-        esp_now_send(peerAddress, (uint8_t *)kmsg, sizeof(Keymsg));
-
-        Serial.println("Key exchange complete.");
-        myKeySent = true;
-        Serial.println(SharedSecret);
-        deviceState = CONNECTED;
-        keyEstablished = true;
-      } else {
-        Serial.println("Key exchange complete.");
-        Serial.println(SharedSecret);
-        deviceState = CONNECTED;
-        keyEstablished = true;
-      }
-    } else {
-      Serial.println("Checksum verification failed for received public key.");
-    }
-  } else {
-    Serial.println("Wrong size for key message.");
-  }
-}
-
 void resetKeyExchange() {
   myKeySent = false;
   keyEstablished = false;
   isInitiator = false;
   PrivateKey = 0;
   SharedSecret = 0;
-  
-  
 }

@@ -74,9 +74,7 @@ void Countup() {
   }
 }
 
-
 //===========Velocity Funktion=================
-
 void CarVelocity() {
   if (millis() - speedLastTime >= speedTimeCal ) {
     //Beregning i m/s
