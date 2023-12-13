@@ -9,6 +9,8 @@ float input_voltage = 0.0;
 
 const int OpticPin = 39;  //pin 3 på arduino
 
+const int conLED = 37;
+
 double lasttimeDB = 0;
 double delaytimer = 60;
 
@@ -18,6 +20,9 @@ double deltaTime = 0.0;
 
 double angle = 0;
 double calSpeed = 0;
+
+double starttime = 0;
+double exectime = 0;
 
 TaskHandle_t SenderTaskHandle = NULL;
 
@@ -38,6 +43,7 @@ void setup() {
   // Init Pins
   pinMode(ServoPin, INPUT);
   pinMode(OpticPin, INPUT_PULLUP);
+  pinMode(conLED, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
   keyMutex = xSemaphoreCreateMutex();
@@ -61,7 +67,8 @@ void AngleCal(void *pvParameters) {
     inputVoltage = (analogValue * 4.0) / 4095.0;
     angle = 39.8613 * inputVoltage - 57.6003;
     //Serial.println(angle);
-    vTaskDelayUntil(&lastWakeTime, 20);
+    
+    vTaskDelayUntil(&lastWakeTime, 25);
   }
 }
 
@@ -76,7 +83,8 @@ void keyTask(void *pvParameters) {
       Serial.println();
       getSharedKey();
     }
-    vTaskDelayUntil(&lastWakeTime, 20);
+
+
   }
 }
 
@@ -86,6 +94,7 @@ void SenderTask(void *pvParameters) {
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (1) {
+    
     if (keyEstablished == true) {
       message msg;
 
@@ -162,6 +171,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       Serial.println(SharedSecret);
       Serial.println("Key exchange complete.");
       keyEstablished = true;
+      digitalWrite(conLED, HIGH);
       AckMsg ack;
       ack.ranack = 1;
       ack.checksum = crc32(&ack, sizeof(AckMsg) - sizeof(ack.checksum));
@@ -179,6 +189,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_SUCCESS) {
     //Serial.println("Sent with success");
   } else {
+    digitalWrite(conLED, LOW);
     resetKeyExchange();
   }
 }

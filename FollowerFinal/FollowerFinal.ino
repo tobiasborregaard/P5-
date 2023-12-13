@@ -27,6 +27,9 @@ const int hBro_PWM = 14;
 const int hBro_pol1 = 22;
 const int hBro_pol2 = 23;
 
+// Wireless con LED
+const int conLED = 21;
+
 // FIR filter order
 const int M = 4;
 
@@ -37,7 +40,12 @@ double duration1, distance1, duration2, distance2, duration3, distance3, avgDist
 const double separationLR = 0.2282;  // Separation between left and right sensor
 const double separationRC = 0.1141;  // Separation between center and right sensor
 const double separationLC = 0.1141;  // Separation between center and left sensor
-
+/*
+// Separation between sensors in m
+const double separationLR = 0.185;  // Separation between left and right sensor
+const double separationRC = 0.098;  // Separation between center and right sensor
+const double separationLC = 0.098;  // Separation between center and left sensor
+*/
 // Semaphores
 static SemaphoreHandle_t angMutex;
 static SemaphoreHandle_t distMutex;
@@ -49,6 +57,9 @@ int angleIndex = 0;
 const int N = 0;
 double angleMeasurements[N + 1] = { 0 };
 double angleSum = 0;
+
+double execTime = 0;
+double startTime = 0;
 
 // =================== ESP-NOW ==================
 //Mac addresses // 08:3A:F2:45:44:BC
@@ -81,6 +92,9 @@ void setup() {
   pinMode(hBro_PWM, OUTPUT);
   pinMode(hBro_pol1, OUTPUT);
   pinMode(hBro_pol2, OUTPUT);
+
+  // LED
+  pinMode(conLED, OUTPUT);
 
   angMutex = xSemaphoreCreateMutex();
   distMutex = xSemaphoreCreateMutex();
@@ -142,7 +156,6 @@ void Angle_Controller(void *pvParameters) {
     //myservo.writeMicroseconds(1011);
 
     xSemaphoreGive(orderMutex);
-
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(25));
   }
 }
@@ -173,7 +186,6 @@ void Dist_Controller(void *pvParameters) {
   double forwardVoltage = 0;
 
   while (1) {
-
     xSemaphoreTake(orderMutex, 1000);
 
     xSemaphoreTake(printMutex, 1000);
@@ -216,13 +228,13 @@ void Dist_Controller(void *pvParameters) {
     //Vd_n0 = 5.095*Ed_n0 - 10.13*Ed_n1 + 5.032*Ed_n2 + 1.947*Vd_n1 - 0.9468*Vd_n2;
 
     //wc=1, PM = 75, SSE = 0.1, Rise time = 1.51s, MP = 2%,
-    //Vd_n0 = 7.467*Ed_n0 - 14.87*Ed_n1 + 7.404*Ed_n2 + 1.922*Vd_n1 - 0.922*Vd_n2;
+    Vd_n0 = 7.467*Ed_n0 - 14.87*Ed_n1 + 7.404*Ed_n2 + 1.922*Vd_n1 - 0.922*Vd_n2;
 
     //Wc = 1.5, PM = ?, SSE = ?, MP = ?
     //Vd_n0 = 19.42*Ed_n0 -19.24*Ed_n1 + 0.8607*Vd_n1;
 
     //wc=1.5, PM = 75, SSE = 0.1, Rise time = 1s, SetTime = 5s, MP = 2.53%,
-    Vd_n0 = 19.43*Ed_n0 - 38.65*Ed_n1 + 19.23*Ed_n2 + 1.861*Vd_n1 - 0.8606*Vd_n2;
+    //Vd_n0 = 19.43*Ed_n0 - 38.65*Ed_n1 + 19.23*Ed_n2 + 1.861*Vd_n1 - 0.8606*Vd_n2;
 
     //Serial.print("Vd_n0: ");
     //Serial.println(Vd_n0);
@@ -283,7 +295,6 @@ void Dist_Controller(void *pvParameters) {
     analogWrite(hBro_PWM, outMapped);
 
     xSemaphoreGive(orderMutex);
-
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(25));
   }
 }
@@ -318,25 +329,26 @@ void UniTask(void *pvParameters) {
     //filteredDistL = 0.7;  // dummy
     //vTaskDelay(pdMS_TO_TICKS(5));
 
-    filteredDistC = ReadAndFilterSensor(triggerPinC, echoPinC, measC, sumC, index, validC);  // Measured and filtered distance from sensorC
+    //filteredDistC = ReadAndFilterSensor(triggerPinC, echoPinC, measC, sumC, index, validC);  // Measured and filtered distance from sensorC
     //filteredDistC = 0.7;  // dummy
+    validC = false;
     //vTaskDelay(pdMS_TO_TICKS(5));
 
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
-    xSemaphoreTake(printMutex, 1000);/*
+    xSemaphoreTake(printMutex, 1000);
     Serial.print("Sensor L: ");
     Serial.println(filteredDistL);
     Serial.print("Sensor C: ");
     Serial.println(filteredDistC);
     Serial.print("Sensor R: ");
-    Serial.println(filteredDistR);*/
+    Serial.println(filteredDistR);
     xSemaphoreGive(printMutex);
     
 
     xSemaphoreTake(distMutex, 1000);
     avgDist = AvgDistance(validL, validC, validR, filteredDistL, filteredDistC, filteredDistR);
-    xSemaphoreGive(distMutex); /*
+    xSemaphoreGive(distMutex); 
 
     Serial.println();
     Serial.println();
@@ -344,7 +356,7 @@ void UniTask(void *pvParameters) {
     Serial.println();
     Serial.println();
     Serial.print("Average Distance: ");
-    Serial.println(avgDist, 4);*/
+    Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -371,13 +383,13 @@ double ReadAndFilterSensor(int triggerPin, int echoPin, double *measurements, do
   digitalWrite(triggerPin, LOW);
 
   digitalWrite(triggerPin, HIGH);
-  startTime = micros();
   while (micros() - startTime < 10);
   digitalWrite(triggerPin, LOW);
 
   noInterrupts();
   duration = pulseIn(echoPin, HIGH, timeOut);
   interrupts();
+
   //Serial.println(duration);
   
   
@@ -513,6 +525,7 @@ void InitESP() {
 }
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  startTime = micros();
   xSemaphoreTake(printMutex, 1000);
   Serial.println("1");
   if (len == sizeof(Keymsg)){
@@ -542,6 +555,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       Serial.println(ack->ranack);
       if (ack->ranack == 1){
         keyEstablished = true;
+        digitalWrite(conLED, HIGH);
       }
     } else {
       Serial.println("Checksum verification failed for received ack.");
@@ -561,6 +575,9 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
   }
   xSemaphoreGive(printMutex);
+  execTime = micros() - startTime;
+  Serial.print("Execution time: ");
+  Serial.println(execTime);
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
