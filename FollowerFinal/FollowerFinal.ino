@@ -336,27 +336,27 @@ void UniTask(void *pvParameters) {
 
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
-    xSemaphoreTake(printMutex, 1000);
-    Serial.print("Sensor L: ");
-    Serial.println(filteredDistL);
-    Serial.print("Sensor C: ");
-    Serial.println(filteredDistC);
-    Serial.print("Sensor R: ");
-    Serial.println(filteredDistR);
-    xSemaphoreGive(printMutex);
+    // xSemaphoreTake(printMutex, 1000);
+    // Serial.print("Sensor L: ");
+    // Serial.println(filteredDistL);
+    // Serial.print("Sensor C: ");
+    // Serial.println(filteredDistC);
+    // Serial.print("Sensor R: ");
+    // Serial.println(filteredDistR);
+    // xSemaphoreGive(printMutex);
     
 
     xSemaphoreTake(distMutex, 1000);
     avgDist = AvgDistance(validL, validC, validR, filteredDistL, filteredDistC, filteredDistR);
     xSemaphoreGive(distMutex); 
 
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.print("Average Distance: ");
-    Serial.println(avgDist, 4);
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.print("Average Distance: ");
+    // Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -565,9 +565,9 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     message *msg = (message *)incomingData;
     decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret); 
     if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
-      Serial.println("Received message.");
-      Serial.println(msg->Velocity);
-      Serial.println(msg->Angle);
+      // Serial.println("Received message.");
+      // Serial.println(msg->Velocity);
+      // Serial.println(msg->Angle);
       leaderSpeed = msg->Velocity;
        // Increment the packet count for the current second
     Packets++;
