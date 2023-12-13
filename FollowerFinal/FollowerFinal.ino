@@ -569,6 +569,11 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       Serial.println(msg->Velocity);
       Serial.println(msg->Angle);
       leaderSpeed = msg->Velocity;
+       // Increment the packet count for the current second
+    Packets++;
+    unsigned long currentTime = millis();
+    // Update the packet counts array
+    updatePacketCounts(currentTime);
     } else {
       Serial.println("Checksum verification failed for received message.");
     }
