@@ -33,11 +33,11 @@ const int conLED = 21;
 // FIR filter order
 const int M = 4;
 
-// Global variables
+// Global variables½<AZA½
 double duration1, distance1, duration2, distance2, duration3, distance3, avgDist, relAng, leaderSpeed;
 
 // Separation between sensors in m
-const double separationLR = 0.2282;  // Separation between left and right sensor
+const dou§1le separationLR = 0.2282;  // Separation between left and right sensor
 const double separationRC = 0.1141;  // Separation between center and right sensor
 const double separationLC = 0.1141;  // Separation between center and left sensor
 /*
@@ -527,17 +527,17 @@ void InitESP() {
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   startTime = micros();
   xSemaphoreTake(printMutex, 1000);
-  Serial.println("1");
+  // Serial.println("1");
   if (len == sizeof(Keymsg)){
     
     Keymsg *kmsg = (Keymsg *)incomingData;
     if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
-      Serial.println(kmsg->PublicKey);
+      // Serial.println(kmsg->PublicKey);
       int skey = kmsg->PublicKey;
       SharedSecret = SecretKey(skey);
-      Serial.println("Verified key public key.");
-      Serial.println(SharedSecret);
-      Serial.println("Key exchange complete.");
+      // Serial.println("Verified key public key.");
+      // Serial.println(SharedSecret);
+      // Serial.println("Key exchange complete.");
       Keymsg mykmsg;
       mykmsg.PublicKey = PublicKey();
       mykmsg.checksum = crc32(&mykmsg, sizeof(Keymsg) - sizeof(mykmsg.checksum));
@@ -551,7 +551,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   if (len == sizeof(AckMsg) ){
     AckMsg *ack = (AckMsg *)incomingData;
     if (ack->checksum == crc32(ack, sizeof(AckMsg) - sizeof(ack->checksum))) {
-      Serial.println("Received ack.");
+      // Serial.println("Received ack.");
       Serial.println(ack->ranack);
       if (ack->ranack == 1){
         keyEstablished = true;
