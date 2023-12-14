@@ -31,27 +31,18 @@ const int Generator = 2;
 int PrivateKey = 0;
 int SharedSecret = 0;
 
-unsigned long Packets = 0;
+unsigned long packets = 0;
 unsigned long lastUpdateTime = 0;
 int packetCountsPerSecond[5] = {0};
 
 
-void updatePacketCounts(unsigned long currentTime) {
-    if (currentTime - lastUpdateTime >= 1000) {  
-        for (int i = 4; i > 0; i--) {
-            packetCountsPerSecond[i] = packetCountsPerSecond[i - 1];
-        }
-        packetCountsPerSecond[0] = Packets;
-        Packets = 0;
-        lastUpdateTime = currentTime;
-        int sum = 0;
-        for (int i = 0; i < 4; i++) {
-            sum += packetCountsPerSecond[i];
-            sum /= 4;
-            Serial.print("Average packet count per second: ");
-            Serial.println(sum);
-                       
-        }
+void updatePacketCounts() {
+    if (millis() - lastUpdateTime >= 1000) { 
+      Serial.println(packets);
+      lastUpdateTime = millis();
+      packets = 0;
+      
+      
     }
 }
 
@@ -135,4 +126,3 @@ void resetKeyExchange() {
   PrivateKey = 0;
   SharedSecret = 0; 
 }
-

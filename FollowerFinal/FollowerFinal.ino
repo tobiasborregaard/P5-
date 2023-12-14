@@ -152,8 +152,8 @@ void Angle_Controller(void *pvParameters) {
       out = Ta_n0;
     }
 
-    myservo.writeMicroseconds(out);
-    //myservo.writeMicroseconds(1011);
+    //myservo.writeMicroseconds(out);
+    myservo.writeMicroseconds(1011);
 
     xSemaphoreGive(orderMutex);
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(25));
@@ -179,7 +179,7 @@ void Dist_Controller(void *pvParameters) {
   double Vd_n1 = 0;
   double Vd_n2 = 0;
   //Ref
-  double ref = -0.7;
+  double ref = -0.2;
   // controller output with feedforward
   double Vd_n0_forward = 0;
 
@@ -238,6 +238,15 @@ void Dist_Controller(void *pvParameters) {
 
     //Serial.print("Vd_n0: ");
     //Serial.println(Vd_n0);
+
+    xSemaphoreTake(printMutex, 1000);/*
+    Serial.print(avgDist);
+    Serial.print(",");
+    Serial.print(Ed_n0);
+    Serial.print(",");
+    Serial.println(Vd_n0);*/
+    xSemaphoreGive(printMutex);
+    
     // Update variables
     Vd_n2 = Vd_n1;
     Vd_n1 = Vd_n0;
@@ -525,9 +534,7 @@ void InitESP() {
 }
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  startTime = micros();
   xSemaphoreTake(printMutex, 1000);
-  Serial.println("1");
   if (len == sizeof(Keymsg)){
     
     Keymsg *kmsg = (Keymsg *)incomingData;
@@ -570,19 +577,16 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       // Serial.println(msg->Angle);
       leaderSpeed = msg->Velocity;
        // Increment the packet count for the current second
-    Packets++;
-    unsigned long currentTime = millis();
-    // Update the packet counts array
-    updatePacketCounts(currentTime);
+    packets++;
+    Serial.print(millis());
+    Serial.print(",");
+    Serial.println(packets);
     } else {
       Serial.println("Checksum verification failed for received message.");
     }
 
   }
   xSemaphoreGive(printMutex);
-  execTime = micros() - startTime;
-  Serial.print("Execution time: ");
-  Serial.println(execTime);
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
