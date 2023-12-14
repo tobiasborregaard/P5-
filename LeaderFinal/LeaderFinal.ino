@@ -9,8 +9,6 @@ float input_voltage = 0.0;
 
 const int OpticPin = 39;  //pin 3 på arduino
 
-const int conLED = 37;
-
 double lasttimeDB = 0;
 double delaytimer = 60;
 
@@ -43,7 +41,6 @@ void setup() {
   // Init Pins
   pinMode(ServoPin, INPUT);
   pinMode(OpticPin, INPUT_PULLUP);
-  pinMode(conLED, OUTPUT);
 
   attachInterrupt(digitalPinToInterrupt(OpticPin), Countup, RISING);
   keyMutex = xSemaphoreCreateMutex();
@@ -171,7 +168,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       Serial.println(SharedSecret);
       Serial.println("Key exchange complete.");
       keyEstablished = true;
-      digitalWrite(conLED, HIGH);
       AckMsg ack;
       ack.ranack = 1;
       ack.checksum = crc32(&ack, sizeof(AckMsg) - sizeof(ack.checksum));
@@ -189,7 +185,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_SUCCESS) {
     //Serial.println("Sent with success");
   } else {
-    digitalWrite(conLED, LOW);
     resetKeyExchange();
   }
 }
