@@ -33,8 +33,8 @@ static SemaphoreHandle_t keyMutex;
 #define CHANNEL 0
 // Structure for ESP-NOW peer information and message format
 esp_now_peer_info_t peerInfo;
-//message types
-bool keysExhanged = false;
+
+
 
 void setup() {
   // put your setup code here, to run once:
