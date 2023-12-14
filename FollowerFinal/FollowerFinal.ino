@@ -337,12 +337,12 @@ void UniTask(void *pvParameters) {
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
     xSemaphoreTake(printMutex, 1000);
-    Serial.print("Sensor L: ");
-    Serial.println(filteredDistL);
-    Serial.print("Sensor C: ");
-    Serial.println(filteredDistC);
-    Serial.print("Sensor R: ");
-    Serial.println(filteredDistR);
+    // Serial.print("Sensor L: ");
+    // Serial.println(filteredDistL);
+    // Serial.print("Sensor C: ");
+    // Serial.println(filteredDistC);
+    // Serial.print("Sensor R: ");
+    // Serial.println(filteredDistR);
     xSemaphoreGive(printMutex);
     
 
@@ -350,13 +350,13 @@ void UniTask(void *pvParameters) {
     avgDist = AvgDistance(validL, validC, validR, filteredDistL, filteredDistC, filteredDistR);
     xSemaphoreGive(distMutex); 
 
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.print("Average Distance: ");
-    Serial.println(avgDist, 4);
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.println();
+    // Serial.print("Average Distance: ");
+    // Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -364,7 +364,7 @@ void UniTask(void *pvParameters) {
     xSemaphoreGive(angMutex);
     relAng = angleFilter(rawAngle, angleIndex);
     //Serial.print("Relative Angle: ");
-    //Serial.println(relAng, 2);
+    Serial.println(relAng, 2);
 
 
     index = (index + 1) % (M + 1);  // increase index and wrap around if necessary
@@ -565,9 +565,9 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     message *msg = (message *)incomingData;
     decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret); 
     if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
-      Serial.println("Received message.");
-      Serial.println(msg->Velocity);
-      Serial.println(msg->Angle);
+      // Serial.println("Received message.");
+      // Serial.println(msg->Velocity);
+      // Serial.println(msg->Angle);
       leaderSpeed = msg->Velocity;
     } else {
       Serial.println("Checksum verification failed for received message.");
@@ -576,8 +576,8 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   }
   xSemaphoreGive(printMutex);
   execTime = micros() - startTime;
-  Serial.print("Execution time: ");
-  Serial.println(execTime);
+  // Serial.print("Execution time: ");
+  // Serial.println(execTime);
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
