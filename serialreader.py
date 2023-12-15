@@ -20,7 +20,7 @@ def main():
     ser.flushInput()
 
     # Open output file
-    with open(output_file, 'w', newline='') as csvfile:
+    with open(output_file, 'w', newline='') as csvfile:     
         writer = csv.writer(csvfile, delimiter=',')
         writer.writerow(["Rel Angle"])
 
@@ -36,7 +36,7 @@ def main():
                 decoded_bytes = ser_bytes[0:len(ser_bytes)-2].decode("utf-8")
                 print(decoded_bytes)
                 writer.writerow([decoded_bytes])
-
+     
             except KeyboardInterrupt:
                 print("Keyboard Interrupt")
                 break

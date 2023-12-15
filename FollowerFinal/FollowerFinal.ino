@@ -337,12 +337,12 @@ void UniTask(void *pvParameters) {
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
     xSemaphoreTake(printMutex, 1000);
-    Serial.print("Sensor L: ");
-    Serial.println(filteredDistL);
-    Serial.print("Sensor C: ");
-    Serial.println(filteredDistC);
-    Serial.print("Sensor R: ");
-    Serial.println(filteredDistR);
+    // Serial.print("Sensor L: ");
+    // Serial.println(filteredDistL);
+    // Serial.print("Sensor C: ");
+    // Serial.println(filteredDistC);
+    // Serial.print("Sensor R: ");
+    // Serial.println(filteredDistR);
     xSemaphoreGive(printMutex);
 
 
@@ -355,8 +355,8 @@ void UniTask(void *pvParameters) {
     // Serial.println();
     // Serial.println();
     // Serial.println();
-    Serial.print("Average Distance: ");
-    Serial.println(avgDist, 4);
+    // Serial.print("Average Distance: ");
+    // Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -504,7 +504,7 @@ int mapDoubleToInt(double x, double in_min, double in_max, int out_min, int out_
 void InitESP() {
   WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
   WiFi.disconnect();
-  Serial.println(WiFi.macAddress());
+  // Serial.println(WiFi.macAddress());
   // Initialize ESP-NOW, restart on failure
   if (esp_now_init() != ESP_OK) {
     ESP.restart();
@@ -596,4 +596,4 @@ void getSharedKey() {
     myKeySent = true;
   }
 
-}
+ }
