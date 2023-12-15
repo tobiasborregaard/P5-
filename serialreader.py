@@ -5,7 +5,7 @@ import keyboard  # Make sure to install this library using pip
 
 def create_output_filename():
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    return f'output_{timestamp}.csv'
+    return f'output_{timestamp}.csv'   
 
 def main():
     # Serial port configuration
@@ -36,7 +36,7 @@ def main():
                 decoded_bytes = ser_bytes[0:len(ser_bytes)-2].decode("utf-8")
                 print(decoded_bytes)
                 writer.writerow([decoded_bytes])
-                
+
             except KeyboardInterrupt:
                 print("Keyboard Interrupt")
                 break
