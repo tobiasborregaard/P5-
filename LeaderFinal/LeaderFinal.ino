@@ -23,7 +23,8 @@ double starttime = 0;
 double exectime = 0;
 
 //08:3A:F2:45:44:BC
-uint8_t peerAddress[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x46 };
+//10:52:1C:75:E1:F0
+uint8_t peerAddress[] = { 0x10, 0x52, 0x1C, 0x75, 0xE1, 0xF0 };
 // uint8_t peerAddress[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x44 };
 static SemaphoreHandle_t keyMutex;
 #define CHANNEL 0
@@ -78,8 +79,7 @@ void keyTask(void *pvParameters) {
       Serial.println();
       getSharedKey();
     }
-
-
+    vTaskDelayUntil(&lastWakeTime, 25);
   }
 }
 
@@ -93,7 +93,7 @@ void SenderTask(void *pvParameters) {
     if (keyEstablished == true) {
       message msg;
 
-      if (millis() - speedLastTime > 300) {
+      if (millis() - speedLastTime > 200) {
         calSpeed = 0;
       }
 
