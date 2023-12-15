@@ -555,18 +555,18 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       Serial.println(ack->ranack);
       if (ack->ranack == 1) {
         keyEstablished = true;
-        digitalWrite(conLED, HIGH);
       }
     } else {
       Serial.println("Checksum verification failed for received ack.");
     }
   }
   if (len == sizeof (message)) {
+    digitalWrite(conLED, !digitalRead(conLED));
     message *msg = (message *)incomingData;
     decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);
     if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
-      // Serial.println("Received message.");
-      // Serial.println(msg->Velocity);
+      Serial.println("Received message.");
+      Serial.println(msg->Velocity);
       // Serial.println(msg->Angle);
       leaderSpeed = msg->Velocity;
     } else {
@@ -575,9 +575,6 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
 
   }
   xSemaphoreGive(printMutex);
-  execTime = micros() - startTime;
-  // Serial.print("Execution time: ");
-  // Serial.println(execTime);
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
