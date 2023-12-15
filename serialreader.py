@@ -5,7 +5,7 @@ import keyboard  # Make sure to install this library using pip
 
 def create_output_filename():
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    return f'output_{timestamp}.csv'  
+    return f'output_{timestamp}.csv'   
 
 def main():
     # Serial port configuration
