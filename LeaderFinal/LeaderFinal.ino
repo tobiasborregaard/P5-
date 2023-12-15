@@ -22,8 +22,6 @@ double calSpeed = 0;
 double starttime = 0;
 double exectime = 0;
 
-TaskHandle_t SenderTaskHandle = NULL;
-
 //08:3A:F2:45:44:BC
 uint8_t peerAddress[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x44 };
 // uint8_t peerAddress[] = { 0x94, 0xB5, 0x55, 0xF9, 0x06, 0x44 };
