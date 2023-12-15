@@ -47,8 +47,8 @@ void setup() {
 
   InitESP();
 
-  xTaskCreate(keyTask, "keyTask", 3000, NULL, 1, NULL);
-  xTaskCreate(AngleCal, "AngleCal", 3000, NULL, 1, NULL);
+  xTaskCreate(keyTask, "keyTask", 3000, NULL, 2, NULL);
+  xTaskCreate(AngleCal, "AngleCal", 3000, NULL, 3, NULL);
   xTaskCreate(SenderTask, "SenderTask", 3000, NULL, 1, NULL);
 }
 
