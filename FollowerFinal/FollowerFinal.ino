@@ -37,14 +37,14 @@ const int M = 4;
 double duration1, distance1, duration2, distance2, duration3, distance3, avgDist, relAng, leaderSpeed;
 
 // Separation between sensors in m
-const dou§1le separationLR = 0.2282;  // Separation between left and right sensor
+const double separationLR = 0.2282;  // Separation between left and right sensor
 const double separationRC = 0.1141;  // Separation between center and right sensor
 const double separationLC = 0.1141;  // Separation between center and left sensor
 /*
-// Separation between sensors in m
-const double separationLR = 0.185;  // Separation between left and right sensor
-const double separationRC = 0.098;  // Separation between center and right sensor
-const double separationLC = 0.098;  // Separation between center and left sensor
+  // Separation between sensors in m
+  const double separationLR = 0.185;  // Separation between left and right sensor
+  const double separationRC = 0.098;  // Separation between center and right sensor
+  const double separationLC = 0.098;  // Separation between center and left sensor
 */
 // Semaphores
 static SemaphoreHandle_t angMutex;
@@ -76,7 +76,7 @@ void setup() {
   Serial.begin(230400);
 
   myservo.attach(servoPin);
-  
+
   Serial.println("Printing Mac");
   InitESP(); //ESPNOW init
 
@@ -193,14 +193,14 @@ void Dist_Controller(void *pvParameters) {
     //Serial.print("Distance: ");
     //Serial.println(millis());
     /*
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();
-    Serial.println();*/
+      Serial.println();
+      Serial.println();
+      Serial.println();
+      Serial.println();
+      Serial.println();
+      Serial.println();
+      Serial.println();
+      Serial.println();*/
     xSemaphoreGive(printMutex);
 
     xSemaphoreTake(distMutex, 1000);
@@ -228,7 +228,7 @@ void Dist_Controller(void *pvParameters) {
     //Vd_n0 = 5.095*Ed_n0 - 10.13*Ed_n1 + 5.032*Ed_n2 + 1.947*Vd_n1 - 0.9468*Vd_n2;
 
     //wc=1, PM = 75, SSE = 0.1, Rise time = 1.51s, MP = 2%,
-    Vd_n0 = 7.467*Ed_n0 - 14.87*Ed_n1 + 7.404*Ed_n2 + 1.922*Vd_n1 - 0.922*Vd_n2;
+    Vd_n0 = 7.467 * Ed_n0 - 14.87 * Ed_n1 + 7.404 * Ed_n2 + 1.922 * Vd_n1 - 0.922 * Vd_n2;
 
     //Wc = 1.5, PM = ?, SSE = ?, MP = ?
     //Vd_n0 = 19.42*Ed_n0 -19.24*Ed_n1 + 0.8607*Vd_n1;
@@ -244,7 +244,7 @@ void Dist_Controller(void *pvParameters) {
     Ed_n2 = Ed_n1;
     Ed_n1 = Ed_n0;
 
-    forwardVoltage = 0.787*leaderSpeed;
+    forwardVoltage = 0.787 * leaderSpeed;
     leaderSpeed = 0;
     Vd_n0_forward = Vd_n0 + forwardVoltage;
 
@@ -253,7 +253,7 @@ void Dist_Controller(void *pvParameters) {
     //Serial.println(out);
     xSemaphoreGive(printMutex);
     // Determine direction
-    if(Vd_n0_forward < 0.0) {
+    if (Vd_n0_forward < 0.0) {
       dir = 0;
       out = -Vd_n0_forward + distOP;
     }
@@ -263,7 +263,7 @@ void Dist_Controller(void *pvParameters) {
     }
 
     // Determine output voltage
-    if((out) > 7.0) {
+    if ((out) > 7.0) {
       out = 7.0;
     }
 
@@ -337,26 +337,26 @@ void UniTask(void *pvParameters) {
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
     xSemaphoreTake(printMutex, 1000);
-    // Serial.print("Sensor L: ");
-    // Serial.println(filteredDistL);
-    // Serial.print("Sensor C: ");
-    // Serial.println(filteredDistC);
-    // Serial.print("Sensor R: ");
-    // Serial.println(filteredDistR);
+    Serial.print("Sensor L: ");
+    Serial.println(filteredDistL);
+    Serial.print("Sensor C: ");
+    Serial.println(filteredDistC);
+    Serial.print("Sensor R: ");
+    Serial.println(filteredDistR);
     xSemaphoreGive(printMutex);
-    
+
 
     xSemaphoreTake(distMutex, 1000);
     avgDist = AvgDistance(validL, validC, validR, filteredDistL, filteredDistC, filteredDistR);
-    xSemaphoreGive(distMutex); 
+    xSemaphoreGive(distMutex);
 
     // Serial.println();
     // Serial.println();
     // Serial.println();
     // Serial.println();
     // Serial.println();
-    // Serial.print("Average Distance: ");
-    // Serial.println(avgDist, 4);
+    Serial.print("Average Distance: ");
+    Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -391,8 +391,8 @@ double ReadAndFilterSensor(int triggerPin, int echoPin, double *measurements, do
   interrupts();
 
   //Serial.println(duration);
-  
-  
+
+
   // Calculate distance or assign max value if timeout
   if (duration == 0) {
     distance = 1.201;  // Assign 1.2 meters if timeout occurs
@@ -482,18 +482,18 @@ double RelAngle(bool validL, bool validC, bool validR, double filteredDistL, dou
 
 
 double angleFilter(double newAngle, int &angleIndex) {
-    // Subtract the oldest measurement and add the new one
-    angleSum -= angleMeasurements[angleIndex];
-    angleMeasurements[angleIndex] = newAngle;
-    angleSum += angleMeasurements[angleIndex];
+  // Subtract the oldest measurement and add the new one
+  angleSum -= angleMeasurements[angleIndex];
+  angleMeasurements[angleIndex] = newAngle;
+  angleSum += angleMeasurements[angleIndex];
 
-    // Calculate the average
-    double averageAngle = angleSum / (N + 1);
+  // Calculate the average
+  double averageAngle = angleSum / (N + 1);
 
-    // Update the index for the next call
-    angleIndex = (angleIndex + 1) % (N + 1);
+  // Update the index for the next call
+  angleIndex = (angleIndex + 1) % (N + 1);
 
-    return averageAngle;
+  return averageAngle;
 }
 
 int mapDoubleToInt(double x, double in_min, double in_max, int out_min, int out_max) {
@@ -528,8 +528,8 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
   startTime = micros();
   xSemaphoreTake(printMutex, 1000);
   // Serial.println("1");
-  if (len == sizeof(Keymsg)){
-    
+  if (len == sizeof(Keymsg)) {
+
     Keymsg *kmsg = (Keymsg *)incomingData;
     if (kmsg->checksum == crc32(kmsg, sizeof(Keymsg) - sizeof(kmsg->checksum))) {
       // Serial.println(kmsg->PublicKey);
@@ -543,27 +543,27 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
       mykmsg.checksum = crc32(&mykmsg, sizeof(Keymsg) - sizeof(mykmsg.checksum));
       esp_now_send(peerAddress, (uint8_t *)&mykmsg, sizeof(Keymsg));
       getSharedKey();
-      
+
     } else {
       Serial.println("Checksum verification failed for received public key.");
     }
   }
-  if (len == sizeof(AckMsg) ){
+  if (len == sizeof(AckMsg) ) {
     AckMsg *ack = (AckMsg *)incomingData;
     if (ack->checksum == crc32(ack, sizeof(AckMsg) - sizeof(ack->checksum))) {
       // Serial.println("Received ack.");
       Serial.println(ack->ranack);
-      if (ack->ranack == 1){
+      if (ack->ranack == 1) {
         keyEstablished = true;
         digitalWrite(conLED, HIGH);
       }
     } else {
       Serial.println("Checksum verification failed for received ack.");
-      }
+    }
   }
-  if(len == sizeof (message)){
+  if (len == sizeof (message)) {
     message *msg = (message *)incomingData;
-    decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret); 
+    decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);
     if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
       // Serial.println("Received message.");
       // Serial.println(msg->Velocity);
@@ -585,7 +585,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void getSharedKey() {
 
-  if (myKeySent == false){
+  if (myKeySent == false) {
     if (PrivateKey == 0) {
       PrivateKey = esp_random() % Prime;
     }
@@ -595,5 +595,5 @@ void getSharedKey() {
     esp_now_send(peerAddress, (uint8_t *)&kmsg, sizeof(Keymsg));
     myKeySent = true;
   }
-  
+
 }
