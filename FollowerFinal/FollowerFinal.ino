@@ -6,6 +6,8 @@
 
 Servo myservo;
 
+// millis, Distance, Relativ vinkel, leaderSpeed, Dist controller output, Dist error, Angle controller output, angle error, Packet count 
+
 // =================== PINS ==================
 /*
   Programmet crasher hvis vi prøver at bruge pinMode på en pin der ikke eksisterer.
@@ -27,13 +29,20 @@ const int hBro_PWM = 14;
 const int hBro_pol1 = 22;
 const int hBro_pol2 = 23;
 
+int packetCount = 0;
+
+double Vd_n0 = 0;
+double Ed_n0 = 0;
+double Ta_n0 = 0;
+double Ea_n0 = 0;
+
 // Wireless con LED
 const int conLED = 21;
 
 // FIR filter order
 const int M = 4;
 
-// Global variables½<AZA½
+// Global variables
 double duration1, distance1, duration2, distance2, duration3, distance3, avgDist, relAng, leaderSpeed;
 
 // Separation between sensors in m
@@ -74,7 +83,7 @@ uint8_t peerAddress[] = { 0x08, 0x3A, 0xF2, 0x69, 0xCF, 0x64 };
 esp_now_peer_info_t peerInfo;
 
 void setup() {
-  Serial.begin(230400);
+  Serial.begin(115200);
 
   myservo.attach(servoPin);
 
@@ -120,9 +129,9 @@ void Angle_Controller(void *pvParameters) {
   double out = 0;
 
   //Input
-  double Ea_n0 = 0;
+  //double Ea_n0 = 0;
   //Output
-  double Ta_n0 = 0;
+  //double Ta_n0 = 0;
   //Ref
   double ref = 0;
 
@@ -133,6 +142,23 @@ void Angle_Controller(void *pvParameters) {
     xSemaphoreTake(printMutex, 1000);
     //Serial.print("Angle: ");
     //Serial.println(millis());
+    Serial.print(millis());
+    Serial.print(",");
+    Serial.print(avgDist);
+    Serial.print(",");
+    Serial.print(relAng);
+    Serial.print(",");
+    Serial.print(leaderSpeed);
+    Serial.print(",");
+    Serial.print(Vd_n0);
+    Serial.print(",");
+    Serial.print(Ed_n0);
+    Serial.print(",");
+    Serial.print(Ta_n0);
+    Serial.print(",");
+    Serial.print(Ea_n0);
+    Serial.print(",");
+    Serial.println(packetCount);
     xSemaphoreGive(printMutex);
 
     xSemaphoreTake(angMutex, 1000);
@@ -144,6 +170,13 @@ void Angle_Controller(void *pvParameters) {
     xSemaphoreTake(printMutex, 1000);
     //Serial.print("Ta_n0: ");
     //Serial.println(Ta_n0);
+    /*
+    Serial.print(relAng);
+    Serial.print(",");
+    Serial.print(Ea_n0);
+    Serial.print(",");
+    Serial.println(Ta_n0);*/
+
     xSemaphoreGive(printMutex);
     if (Ta_n0 > 1429.0) {
       out = 1429.0;
@@ -172,11 +205,11 @@ void Dist_Controller(void *pvParameters) {
 
   // Initialize values
   //Input
-  double Ed_n0 = 0;
+  //double Ed_n0 = 0;
   double Ed_n1 = 0;
   double Ed_n2 = 0;
   //Output
-  double Vd_n0 = 0;
+  //double Vd_n0 = 0;
   double Vd_n1 = 0;
   double Vd_n2 = 0;
   //Ref
@@ -252,6 +285,7 @@ void Dist_Controller(void *pvParameters) {
     xSemaphoreTake(printMutex, 1000);
     //Serial.print("out: ");
     //Serial.println(out);
+    //Serial.println(Vd);
     xSemaphoreGive(printMutex);
     // Determine direction
     if (Vd_n0_forward < 0.0) {
@@ -337,13 +371,13 @@ void UniTask(void *pvParameters) {
 
     filteredDistR = ReadAndFilterSensor(triggerPinR, echoPinR, measR, sumR, index, validR);  // Measured and filtered distance from sensorR
     //filteredDistR = 0.7;  // dummy
-    xSemaphoreTake(printMutex, 1000);
-    // Serial.print("Sensor L: ");
-    // Serial.println(filteredDistL);
-    // Serial.print("Sensor C: ");
-    // Serial.println(filteredDistC);
-    // Serial.print("Sensor R: ");
-    // Serial.println(filteredDistR);
+    xSemaphoreTake(printMutex, 1000);/*
+    Serial.print("Sensor L: ");
+    Serial.println(filteredDistL);
+    Serial.print("Sensor C: ");
+    Serial.println(filteredDistC);
+    Serial.print("Sensor R: ");
+    Serial.println(filteredDistR);*/
     xSemaphoreGive(printMutex);
 
 
@@ -356,8 +390,8 @@ void UniTask(void *pvParameters) {
     // Serial.println();
     // Serial.println();
     // Serial.println();
-    // Serial.print("Average Distance: ");
-    // Serial.println(avgDist, 4);
+    //Serial.print("Average Distance: ");
+    //Serial.println(avgDist, 4);
 
 
     xSemaphoreTake(angMutex, 1000);
@@ -365,7 +399,7 @@ void UniTask(void *pvParameters) {
     xSemaphoreGive(angMutex);
     relAng = angleFilter(rawAngle, angleIndex);
     //Serial.print("Relative Angle: ");
-    Serial.println(relAng, 2);
+    //Serial.println(relAng, 2);
 
 
     index = (index + 1) % (M + 1);  // increase index and wrap around if necessary
@@ -505,7 +539,7 @@ int mapDoubleToInt(double x, double in_min, double in_max, int out_min, int out_
 void InitESP() {
   WiFi.mode(WIFI_STA);  // Set Wi-Fi mode to Station
   WiFi.disconnect();
-  // Serial.println(WiFi.macAddress());
+  Serial.println(WiFi.macAddress());
   // Initialize ESP-NOW, restart on failure
   if (esp_now_init() != ESP_OK) {
     ESP.restart();
@@ -526,9 +560,7 @@ void InitESP() {
 }
 
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  startTime = micros();
   xSemaphoreTake(printMutex, 1000);
-  // Serial.println("1");
   if (len == sizeof(Keymsg)) {
 
     Keymsg *kmsg = (Keymsg *)incomingData;
@@ -566,9 +598,10 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     message *msg = (message *)incomingData;
     decryptmsg((uint8_t *)msg, sizeof(message), SharedSecret);
     if (msg->checksum == crc32(msg, sizeof(message) - sizeof(msg->checksum))) {
-      Serial.println("Received message.");
-      Serial.println(msg->Velocity);
+      //Serial.println("Received message.");
+      //Serial.println(msg->Velocity);
       // Serial.println(msg->Angle);
+      packetCount++;
       leaderSpeed = msg->Velocity;
     } else {
       Serial.println("Checksum verification failed for received message.");
@@ -594,4 +627,4 @@ void getSharedKey() {
     myKeySent = true;
   }
 
- }
+}
